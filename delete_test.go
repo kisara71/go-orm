@@ -7,6 +7,13 @@ import (
 )
 
 func TestDeletor_Build(t *testing.T) {
+	type TestModel struct {
+		Name string
+		Age  int
+	}
+	db := &DB{
+		registry: &registry{},
+	}
 	testCases := []struct {
 		name      string
 		builder   *Deletor[TestModel]
@@ -15,26 +22,26 @@ func TestDeletor_Build(t *testing.T) {
 	}{
 		{
 			name:    "delete all",
-			builder: &Deletor[TestModel]{},
+			builder: NewDeletor[TestModel](db),
 			wantQuery: &Query{
 				SQL:  "DELETE FROM `test_model`",
-				Args: nil,
+				Args: []any{},
 			},
 			wantErr: nil,
 		},
 		{
 			name:    "delete with table override",
-			builder: func() *Deletor[TestModel] { d := &Deletor[TestModel]{}; d.From("`table_test`"); return d }(),
+			builder: func() *Deletor[TestModel] { d := NewDeletor[TestModel](db); d.From("`table_test`"); return d }(),
 			wantQuery: &Query{
 				SQL:  "DELETE FROM `table_test`",
-				Args: nil,
+				Args: []any{},
 			},
 			wantErr: nil,
 		},
 		{
 			name: "delete with where single",
 			builder: func() *Deletor[TestModel] {
-				d := &Deletor[TestModel]{}
+				d := NewDeletor[TestModel](db)
 				d.Where(C("Name").Eq("hha"))
 				return d
 			}(),
@@ -47,7 +54,7 @@ func TestDeletor_Build(t *testing.T) {
 		{
 			name: "delete with where and",
 			builder: func() *Deletor[TestModel] {
-				d := &Deletor[TestModel]{}
+				d := NewDeletor[TestModel](db)
 				d.Where(C("Age").Eq(111), C("Name").Eq("hha"))
 				return d
 			}(),
@@ -60,7 +67,7 @@ func TestDeletor_Build(t *testing.T) {
 		{
 			name: "delete with where not",
 			builder: func() *Deletor[TestModel] {
-				d := &Deletor[TestModel]{}
+				d := NewDeletor[TestModel](db)
 				d.Where(Not(C("Age").Eq(111)))
 				return d
 			}(),
@@ -73,7 +80,7 @@ func TestDeletor_Build(t *testing.T) {
 		{
 			name: "delete with invalid field",
 			builder: func() *Deletor[TestModel] {
-				d := &Deletor[TestModel]{}
+				d := NewDeletor[TestModel](db)
 				d.Where(Not(C("fsfs").Eq(111)))
 				return d
 			}(),

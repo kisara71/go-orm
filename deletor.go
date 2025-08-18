@@ -6,16 +6,24 @@ import (
 )
 
 type Deletor[T any] struct {
-	m         *model
 	sb        *strings.Builder
 	tableName string
 	where     []Predicate
 	args      []any
+	db        *DB
+}
+
+func NewDeletor[T any](db *DB) *Deletor[T] {
+	return &Deletor[T]{
+		db:    db,
+		where: make([]Predicate, 0, 4),
+		args:  make([]any, 0, 4),
+		sb:    &strings.Builder{},
+	}
 }
 
 func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
-	var err error
-	d.m, err = parseModel(new(T))
+	m, err := d.db.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +31,7 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 	d.sb.WriteString("DELETE FROM ")
 	if d.tableName == "" {
 		d.sb.WriteByte('`')
-		d.sb.WriteString(d.m.tableName)
+		d.sb.WriteString(m.tableName)
 		d.sb.WriteByte('`')
 	} else {
 		d.sb.WriteString(d.tableName)
@@ -35,7 +43,7 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 			p = p.And(d.where[i])
 		}
 		d.args = make([]any, 0, 4)
-		err = buildExpression(d.sb, &d.args, p, d.m.fields)
+		err = buildExpression(d.sb, &d.args, p, m.fields)
 		if err != nil {
 			return nil, err
 		}

@@ -6,12 +6,14 @@ import (
 	"testing"
 )
 
-type TestModel struct {
-	Name string
-	Age  int
-}
-
 func TestSelector(t *testing.T) {
+	type TestModel struct {
+		Name string
+		Age  int
+	}
+	db := &DB{
+		registry: &registry{},
+	}
 	testCases := []struct {
 		name      string
 		builder   *Selector[TestModel]
@@ -19,25 +21,25 @@ func TestSelector(t *testing.T) {
 		wantErr   error
 	}{
 		{
-			builder: &Selector[TestModel]{},
+			builder: NewSelector[TestModel](db),
 			name:    "basic select",
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model`;",
-				Args: nil,
+				Args: []any{},
 			},
 		},
 		{
 			name:    "select from",
-			builder: (&Selector[TestModel]{}).From("`test_model`"),
+			builder: NewSelector[TestModel](db).From("`test_model`"),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model`;",
-				Args: nil,
+				Args: []any{},
 			},
 			wantErr: nil,
 		},
 		{
 			name:    "where",
-			builder: (&Selector[TestModel]{}).Where(C("Name").Eq("hha")),
+			builder: NewSelector[TestModel](db).Where(C("Name").Eq("hha")),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE `name` = ?;",
 				Args: []any{"hha"},
@@ -45,7 +47,7 @@ func TestSelector(t *testing.T) {
 			wantErr: nil,
 		}, {
 			name:    "where not",
-			builder: (&Selector[TestModel]{}).Where(Not(C("Age").Eq(111))),
+			builder: NewSelector[TestModel](db).Where(Not(C("Age").Eq(111))),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE NOT (`age` = ?);",
 				Args: []any{111},
@@ -53,7 +55,7 @@ func TestSelector(t *testing.T) {
 			wantErr: nil,
 		}, {
 			name:    "where and",
-			builder: (&Selector[TestModel]{}).Where((C("Age").Eq(111)).And(C("Name").Eq("hha"))),
+			builder: NewSelector[TestModel](db).Where((C("Age").Eq(111)).And(C("Name").Eq("hha"))),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE (`age` = ?) AND (`name` = ?);",
 				Args: []any{111, "hha"},
@@ -61,7 +63,7 @@ func TestSelector(t *testing.T) {
 			wantErr: nil,
 		}, {
 			name:    "where and & not and",
-			builder: (&Selector[TestModel]{}).Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
+			builder: NewSelector[TestModel](db).Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE (`age` = ?) AND (NOT (`name` = ?));",
 				Args: []any{111, "hha"},
@@ -69,7 +71,7 @@ func TestSelector(t *testing.T) {
 			wantErr: nil,
 		}, {
 			name:    "fromWhere",
-			builder: (&Selector[TestModel]{}).From("`table_test`").Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
+			builder: NewSelector[TestModel](db).From("`table_test`").Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `table_test` WHERE (`age` = ?) AND (NOT (`name` = ?));",
 				Args: []any{111, "hha"},
@@ -77,7 +79,7 @@ func TestSelector(t *testing.T) {
 			wantErr: nil,
 		}, {
 			name:    "where lt",
-			builder: (&Selector[TestModel]{}).Where(C("Age").GT(100)),
+			builder: NewSelector[TestModel](db).Where(C("Age").GT(100)),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE `age` > ?;",
 				Args: []any{100},

@@ -7,23 +7,30 @@ import (
 
 type Selector[T any] struct {
 	tableName string
-	m         *model
 	sb        *strings.Builder
 	where     []Predicate
 	args      []any
+	db        *DB
+}
+
+func NewSelector[T any](db *DB) *Selector[T] {
+	return &Selector[T]{
+		db:    db,
+		sb:    &strings.Builder{},
+		args:  make([]any, 0, 4),
+		where: make([]Predicate, 0, 4),
+	}
 }
 
 func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
-	s.sb = &strings.Builder{}
-	s.sb.WriteString("SELECT * FROM ")
-	var err error
-	s.m, err = parseModel(new(T))
+	m, err := s.db.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
+	s.sb.WriteString("SELECT * FROM ")
 	if s.tableName == "" {
 		s.sb.WriteByte('`')
-		s.sb.WriteString(s.m.tableName)
+		s.sb.WriteString(m.tableName)
 		s.sb.WriteByte('`')
 	} else {
 		s.sb.WriteString(s.tableName)
@@ -35,7 +42,7 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 			p = p.And(s.where[i])
 		}
 		s.args = make([]any, 0, 4)
-		err = buildExpression(s.sb, &s.args, p, s.m.fields)
+		err = buildExpression(s.sb, &s.args, p, m.fields)
 		if err != nil {
 			return nil, err
 		}
