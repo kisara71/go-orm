@@ -6,7 +6,7 @@ type Expression interface {
 	expr()
 }
 
-func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[string]fieldInfo) error {
+func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[string]*fieldInfo) error {
 	if p == nil {
 		return nil
 	}
@@ -36,7 +36,7 @@ func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[
 		}
 	case Column:
 		if _, ok := fields[t.name]; !ok {
-			return ErrInvalidField
+			return ErrUnknownField
 		}
 		sb.WriteByte('`')
 		sb.WriteString(fields[t.name].colName)

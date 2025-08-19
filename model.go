@@ -9,7 +9,8 @@ import (
 
 type model struct {
 	tableName string
-	fields    map[string]fieldInfo
+	fields    map[string]*fieldInfo
+	colMap    map[string]*fieldInfo
 }
 type TableName interface {
 	TableName() string
@@ -19,6 +20,8 @@ var tableNameType = reflect.TypeOf((*TableName)(nil)).Elem()
 
 type fieldInfo struct {
 	colName string
+	goName  string
+	typ     reflect.Type
 }
 type registry struct {
 	models sync.Map
@@ -49,7 +52,8 @@ func (r *registry) Get(entity any) (*model, error) {
 }
 func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 	numField := typ.NumField()
-	fields := make(map[string]fieldInfo, numField)
+	fields := make(map[string]*fieldInfo, numField)
+	colMap := make(map[string]*fieldInfo, numField)
 	for i := 0; i < numField; i++ {
 		tags, err := r.parseTag(typ.Field(i).Tag)
 		if err != nil {
@@ -59,10 +63,13 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 		if !ok || colName == "" {
 			colName = utils.CamelToSnake(typ.Field(i).Name)
 		}
-		fields[typ.Field(i).Name] = fieldInfo{
+		fi := &fieldInfo{
 			colName: colName,
+			goName:  typ.Field(i).Name,
+			typ:     typ.Field(i).Type,
 		}
-
+		fields[typ.Field(i).Name] = fi
+		colMap[colName] = fi
 	}
 	var tableName string
 	if reflect.PointerTo(typ).Implements(tableNameType) {
@@ -73,6 +80,7 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 	return &model{
 		tableName: tableName,
 		fields:    fields,
+		colMap:    colMap,
 	}, nil
 }
 

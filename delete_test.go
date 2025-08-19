@@ -2,7 +2,9 @@ package go_orm
 
 import (
 	"context"
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 )
 
@@ -11,9 +13,9 @@ func TestDeletor_Build(t *testing.T) {
 		Name string
 		Age  int
 	}
-	db := &DB{
-		registry: &registry{},
-	}
+	mockDB, _, err := sqlmock.New()
+	require.NoError(t, err)
+	db := OpenDB(mockDB)
 	testCases := []struct {
 		name      string
 		builder   *Deletor[TestModel]
@@ -85,7 +87,7 @@ func TestDeletor_Build(t *testing.T) {
 				return d
 			}(),
 			wantQuery: nil,
-			wantErr:   ErrInvalidField,
+			wantErr:   ErrUnknownField,
 		},
 	}
 

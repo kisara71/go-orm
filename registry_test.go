@@ -7,14 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// 一个用来测试的 struct
-
-// 用来测试 TableName 接口
-type CustomTable struct {
+type customTable struct {
 	Name string
 }
 
-func (c *CustomTable) TableName() string {
+func (c *customTable) TableName() string {
 	return "my_custom_table"
 }
 
@@ -57,7 +54,7 @@ func TestRegistry_ParseModel(t *testing.T) {
 		},
 		{
 			name:    "custom table name",
-			entity:  &CustomTable{},
+			entity:  &customTable{},
 			wantTbl: "my_custom_table",
 			wantCol: map[string]string{
 				"Name": "name",

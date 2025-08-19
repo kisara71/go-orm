@@ -2,6 +2,7 @@ package go_orm
 
 import (
 	"context"
+	"reflect"
 	"strings"
 )
 
@@ -65,8 +66,45 @@ func (s *Selector[T]) Where(p ...Predicate) *Selector[T] {
 }
 
 func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
-	//TODO implement me
-	panic("implement me")
+	query, err := s.Build(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.db.QueryContext(ctx, query.SQL, query.Args...)
+	defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	t := new(T)
+	m, err := s.db.registry.Get(t)
+	if err != nil {
+		return nil, err
+	}
+	vals := make([]any, 0, len(cols))
+	for _, col := range cols {
+		if fd, ok := m.colMap[col]; ok {
+			vals = append(vals, reflect.New(fd.typ).Interface())
+		} else {
+			return nil, ErrUnknownColumn
+		}
+	}
+	if !rows.Next() {
+		return nil, ErrNoRecord
+	}
+	err = rows.Scan(vals...)
+	if err != nil {
+		return nil, ErrScanFailed
+	}
+	for idx, col := range cols {
+		reflect.ValueOf(t).Elem().FieldByName(m.colMap[col].goName).
+			Set(reflect.ValueOf(vals[idx]).Elem())
+	}
+	return t, nil
 }
 
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
