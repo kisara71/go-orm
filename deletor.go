@@ -11,6 +11,7 @@ type Deletor[T any] struct {
 	where     []Predicate
 	args      []any
 	db        *DB
+	m         *model
 }
 
 func NewDeletor[T any](db *DB) *Deletor[T] {
@@ -27,6 +28,7 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
+	d.m = m
 	d.sb = &strings.Builder{}
 	d.sb.WriteString("DELETE FROM ")
 	if d.tableName == "" {
@@ -43,7 +45,7 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 			p = p.And(d.where[i])
 		}
 		d.args = make([]any, 0, 4)
-		err = buildExpression(d.sb, &d.args, p, m.fields)
+		err = buildExpression(d.sb, &d.args, p, d.m.fields)
 		if err != nil {
 			return nil, err
 		}

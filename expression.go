@@ -35,15 +35,37 @@ func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[
 			sb.WriteByte(')')
 		}
 	case Column:
-		if _, ok := fields[t.name]; !ok {
-			return ErrUnknownField
+		if err := buildColumns(t, sb, fields); err != nil {
+			return err
 		}
-		sb.WriteByte('`')
-		sb.WriteString(fields[t.name].colName)
-		sb.WriteString("` ")
+		sb.WriteByte(' ')
 	case Arg:
 		sb.WriteByte('?')
 		*args = append(*args, t.val)
 	}
+	return nil
+}
+
+func buildColumns(col Column, sb *strings.Builder, fields map[string]*fieldInfo) error {
+	if col.name == "*" {
+		sb.WriteByte('*')
+		return nil
+	}
+	if _, ok := fields[col.name]; !ok {
+		return ErrUnknownField
+	}
+	sb.WriteByte('`')
+	sb.WriteString(fields[col.name].colName)
+	sb.WriteByte('`')
+	return nil
+}
+
+func buildAggregates(aggregate Aggregate, sb *strings.Builder, fields map[string]*fieldInfo) error {
+	sb.WriteString(aggregate.fn)
+	sb.WriteByte('(')
+	if err := buildColumns(aggregate.col, sb, fields); err != nil {
+		return err
+	}
+	sb.WriteByte(')')
 	return nil
 }

@@ -2,19 +2,25 @@ package go_orm
 
 import (
 	"context"
-	"reflect"
 	"strings"
 )
 
 type Selector[T any] struct {
-	tableName string
-	sb        *strings.Builder
-	where     []Predicate
-	args      []any
-	db        *DB
+	tableName   string
+	sb          *strings.Builder
+	where       []Predicate
+	selectables []Selectable
+	args        []any
+	db          *DB
+	m           *model
+}
+
+type Selectable interface {
+	selectable()
 }
 
 func NewSelector[T any](db *DB) *Selector[T] {
+
 	return &Selector[T]{
 		db:    db,
 		sb:    &strings.Builder{},
@@ -28,10 +34,15 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.sb.WriteString("SELECT * FROM ")
+	s.m = m
+	err = s.buildSelectables()
+	if err != nil {
+		return nil, err
+	}
+
 	if s.tableName == "" {
 		s.sb.WriteByte('`')
-		s.sb.WriteString(m.tableName)
+		s.sb.WriteString(s.m.tableName)
 		s.sb.WriteByte('`')
 	} else {
 		s.sb.WriteString(s.tableName)
@@ -43,7 +54,7 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 			p = p.And(s.where[i])
 		}
 		s.args = make([]any, 0, 4)
-		err = buildExpression(s.sb, &s.args, p, m.fields)
+		err = buildExpression(s.sb, &s.args, p, s.m.fields)
 		if err != nil {
 			return nil, err
 		}
@@ -53,6 +64,10 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 		SQL:  s.sb.String(),
 		Args: s.args,
 	}, nil
+}
+
+func (s *Selector[T]) Select(selectables ...Selectable) {
+	s.selectables = selectables
 }
 
 func (s *Selector[T]) From(table string) *Selector[T] {
@@ -70,44 +85,79 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	rows, err := s.db.db.QueryContext(ctx, query.SQL, query.Args...)
 	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
-	cols, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	t := new(T)
-	m, err := s.db.registry.Get(t)
-	if err != nil {
-		return nil, err
-	}
-	vals := make([]any, 0, len(cols))
-	for _, col := range cols {
-		if fd, ok := m.colMap[col]; ok {
-			vals = append(vals, reflect.New(fd.typ).Interface())
-		} else {
-			return nil, ErrUnknownColumn
-		}
-	}
 	if !rows.Next() {
 		return nil, ErrNoRecord
 	}
-	err = rows.Scan(vals...)
+
+	t := new(T)
+	uac, err := NewUnsafeAccessor(s.m, t)
 	if err != nil {
-		return nil, ErrScanFailed
+		return nil, err
 	}
-	for idx, col := range cols {
-		reflect.ValueOf(t).Elem().FieldByName(m.colMap[col].goName).
-			Set(reflect.ValueOf(vals[idx]).Elem())
+	err = uac.Set(rows)
+	if err != nil {
+		return nil, err
 	}
 	return t, nil
 }
 
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
-	//TODO implement me
-	panic("implement me")
+	query, err := s.Build(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.db.QueryContext(ctx, query.SQL, query.Args...)
+	defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	res := make([]*T, 0, 32)
+	for rows.Next() {
+		t := new(T)
+		uac, err := NewUnsafeAccessor(s.m, t)
+		if err != nil {
+			return nil, err
+		}
+		err = uac.Set(rows)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, t)
+	}
+	return res, nil
+}
+
+func (s *Selector[T]) buildSelectables() error {
+	if len(s.selectables) > 0 {
+		s.sb.WriteString("SELECT ")
+
+		for idx, selectable := range s.selectables {
+			if idx > 0 {
+				s.sb.WriteString(", ")
+			}
+			switch se := selectable.(type) {
+			case Column:
+				if err := buildColumns(se, s.sb, s.m.fields); err != nil {
+					return err
+				}
+			case Aggregate:
+				if err := buildAggregates(se, s.sb, s.m.fields); err != nil {
+					return err
+				}
+			}
+
+		}
+		s.sb.WriteString(" FROM ")
+	} else {
+		s.sb.WriteString("SELECT * FROM ")
+	}
+	return nil
 }

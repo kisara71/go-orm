@@ -90,6 +90,70 @@ func TestSelector(t *testing.T) {
 			},
 			wantErr: nil,
 		},
+		{
+			name: "max",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Max("Age"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT MAX(`age`) FROM `test_model`;",
+				Args: []any{},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "max min",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Max("Age"), Min("Age"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT MAX(`age`), MIN(`age`) FROM `test_model`;",
+				Args: []any{},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "max, name, min",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Max("Age"), C("Name"), Min("Age"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT MAX(`age`), `name`, MIN(`age`) FROM `test_model`;",
+				Args: []any{},
+			},
+			wantErr: nil,
+		}, {
+			name: "count all",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(CountAll())
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT COUNT(*) FROM `test_model`;",
+				Args: []any{},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "sum age",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Sum("Age"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT SUM(`age`) FROM `test_model`;",
+				Args: []any{},
+			},
+			wantErr: nil,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -198,6 +262,76 @@ func TestSelector_Get(t *testing.T) {
 				return
 			}
 			assert.Equal(t, res, tc.wantRes)
+		})
+	}
+}
+func TestSelector_GetMulti(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	db := OpenDB(mockDB)
+
+	type TestModel struct {
+		ID      int64  `orm:"column=id_t"`
+		Name    string `orm:"column=name_t"`
+		Address sql.NullString
+	}
+
+	testCases := []struct {
+		name     string
+		expect   func(mk sqlmock.Sqlmock)
+		selector *Selector[TestModel]
+		wantRes  []*TestModel
+		wantErr  error
+	}{
+		{
+			name: "get multi success",
+			expect: func(mk sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id_t", "name_t", "address"}).
+					AddRow(1, "wang", "addr1").
+					AddRow(2, "li", "addr2")
+				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
+			},
+			wantErr: nil,
+			wantRes: []*TestModel{
+				{ID: 1, Name: "wang", Address: sql.NullString{String: "addr1", Valid: true}},
+				{ID: 2, Name: "li", Address: sql.NullString{String: "addr2", Valid: true}},
+			},
+			selector: NewSelector[TestModel](db).Where(C("ID").GT(0)),
+		},
+		{
+			name: "no record",
+			expect: func(mk sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id_t", "name_t", "address"})
+				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
+			},
+			wantErr:  nil, // GetMulti 返回空 slice 不返回 ErrNoRecord
+			wantRes:  []*TestModel{},
+			selector: NewSelector[TestModel](db).Where(C("ID").Eq(100)),
+		},
+		{
+			name: "scan error",
+			expect: func(mk sqlmock.Sqlmock) {
+				rows := sqlmock.NewRows([]string{"id_t", "name_t", "address"}).
+					AddRow("not_int", "wang", "addr")
+				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
+			},
+			wantErr:  ErrScanFailed,
+			wantRes:  nil,
+			selector: NewSelector[TestModel](db).Where(C("ID").Eq(1)),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.expect(mock)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+			defer cancel()
+			res, err := tc.selector.GetMulti(ctx)
+			assert.Equal(t, tc.wantErr, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantRes, res)
 		})
 	}
 }

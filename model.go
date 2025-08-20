@@ -22,6 +22,7 @@ type fieldInfo struct {
 	colName string
 	goName  string
 	typ     reflect.Type
+	offset  uintptr
 }
 type registry struct {
 	models sync.Map
@@ -67,6 +68,7 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 			colName: colName,
 			goName:  typ.Field(i).Name,
 			typ:     typ.Field(i).Type,
+			offset:  typ.Field(i).Offset,
 		}
 		fields[typ.Field(i).Name] = fi
 		colMap[colName] = fi
