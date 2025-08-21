@@ -5,8 +5,9 @@ type Column struct {
 	alias string
 }
 
-func (c Column) selectable() {}
-func (c Column) expr()       {}
+func (Column) assign()     {}
+func (Column) selectable() {}
+func (Column) expr()       {}
 
 func C(name string) Column {
 	return Column{

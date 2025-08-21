@@ -10,4 +10,5 @@ var (
 	ErrNoRecord         = errors.New("found no record in database")
 	ErrScanFailed       = errors.New("scan data failed, may get unknown columns")
 	ErrInvalidArguments = errors.New("invalid arguments")
+	ErrInsertNoValues   = errors.New("call insert with out values")
 )

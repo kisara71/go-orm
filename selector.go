@@ -54,7 +54,7 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 			p = p.And(s.where[i])
 		}
 		s.args = make([]any, 0, 4)
-		err = buildExpression(s.sb, &s.args, p, s.m.fields)
+		err = buildExpression(s.sb, &s.args, p, s.m.goMap)
 		if err != nil {
 			return nil, err
 		}
@@ -146,11 +146,11 @@ func (s *Selector[T]) buildSelectables() error {
 			}
 			switch se := selectable.(type) {
 			case Column:
-				if err := buildColumns(se, s.sb, s.m.fields); err != nil {
+				if err := buildColumns(se, s.sb, s.m.goMap); err != nil {
 					return err
 				}
 			case Aggregate:
-				if err := buildAggregates(se, s.sb, s.m.fields); err != nil {
+				if err := buildAggregates(se, s.sb, s.m.goMap); err != nil {
 					return err
 				}
 			case RawExpression:

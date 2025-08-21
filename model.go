@@ -9,7 +9,8 @@ import (
 
 type model struct {
 	tableName string
-	fields    map[string]*fieldInfo
+	fields    []*fieldInfo
+	goMap     map[string]*fieldInfo
 	colMap    map[string]*fieldInfo
 }
 type TableName interface {
@@ -53,7 +54,8 @@ func (r *registry) Get(entity any) (*model, error) {
 }
 func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 	numField := typ.NumField()
-	fields := make(map[string]*fieldInfo, numField)
+	fields := make([]*fieldInfo, 0, numField)
+	goMap := make(map[string]*fieldInfo, numField)
 	colMap := make(map[string]*fieldInfo, numField)
 	for i := 0; i < numField; i++ {
 		tags, err := r.parseTag(typ.Field(i).Tag)
@@ -70,8 +72,9 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 			typ:     typ.Field(i).Type,
 			offset:  typ.Field(i).Offset,
 		}
-		fields[typ.Field(i).Name] = fi
+		goMap[typ.Field(i).Name] = fi
 		colMap[colName] = fi
+		fields = append(fields, fi)
 	}
 	var tableName string
 	if reflect.PointerTo(typ).Implements(tableNameType) {
@@ -81,8 +84,9 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 	}
 	return &model{
 		tableName: tableName,
-		fields:    fields,
+		goMap:     goMap,
 		colMap:    colMap,
+		fields:    fields,
 	}, nil
 }
 

@@ -76,8 +76,8 @@ func TestRegistry_ParseModel(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tc.wantTbl, m.tableName)
-			gotCols := make(map[string]string, len(m.fields))
-			for k, f := range m.fields {
+			gotCols := make(map[string]string, len(m.goMap))
+			for k, f := range m.goMap {
 				gotCols[k] = f.colName
 			}
 			assert.True(t, reflect.DeepEqual(tc.wantCol, gotCols))

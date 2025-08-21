@@ -32,7 +32,7 @@ func (u *unsafeAccessor) Set(rows *sql.Rows) error {
 		return err
 	}
 	address := reflect.ValueOf(u.entity).UnsafePointer()
-	vals := make([]any, 0, len(u.m.fields))
+	vals := make([]any, 0, len(u.m.goMap))
 	for _, col := range cols {
 		fd, ok := u.m.colMap[col]
 		if !ok {
@@ -49,7 +49,7 @@ func (u *unsafeAccessor) Set(rows *sql.Rows) error {
 }
 
 func (u *unsafeAccessor) Fetch(field string) (any, error) {
-	if fd, ok := u.m.fields[field]; !ok {
+	if fd, ok := u.m.goMap[field]; !ok {
 		return nil, ErrUnknownField
 	} else {
 		address := reflect.ValueOf(u.entity).UnsafePointer()

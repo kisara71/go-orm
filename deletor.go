@@ -45,7 +45,7 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 			p = p.And(d.where[i])
 		}
 		d.args = make([]any, 0, 4)
-		err = buildExpression(d.sb, &d.args, p, d.m.fields)
+		err = buildExpression(d.sb, &d.args, p, d.m.goMap)
 		if err != nil {
 			return nil, err
 		}
