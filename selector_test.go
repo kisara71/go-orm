@@ -66,6 +66,26 @@ func TestSelector(t *testing.T) {
 			},
 			wantErr: nil,
 		}, {
+			name: "where raw",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db).Where(Raw("ID = ?", 18).AsPredicate())
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` WHERE ID = ?;",
+				Args: []any{18},
+			},
+		}, {
+			name: "where raw and name",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db).Where(Raw("ID = ?", 18).AsPredicate().And(C("Name").Eq("c")))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT * FROM `test_model` WHERE (ID = ?) AND (`name` = ?);",
+				Args: []any{18, "c"},
+			},
+		}, {
 			name:    "where and & not and",
 			builder: NewSelector[TestModel](db).Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
 			wantQuery: &Query{
@@ -153,6 +173,28 @@ func TestSelector(t *testing.T) {
 				Args: []any{},
 			},
 			wantErr: nil,
+		}, {
+			name: "raw expr",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Raw("DISTINCT `age`"), C("Name"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT DISTINCT `age`, `name` FROM `test_model`;",
+				Args: []any{},
+			},
+		}, {
+			name: "as",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(C("Age").As("age_as"), Max("Name").As("name_as"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT `age` AS `age_as`, MAX(`name`) AS `name_as` FROM `test_model`;",
+				Args: []any{},
+			},
 		},
 	}
 	for _, tc := range testCases {
@@ -162,7 +204,7 @@ func TestSelector(t *testing.T) {
 			if err != nil {
 				return
 			}
-			assert.Equal(t, res, tc.wantQuery)
+			assert.Equal(t, tc.wantQuery, res)
 		})
 	}
 }
@@ -261,7 +303,7 @@ func TestSelector_Get(t *testing.T) {
 			if err != nil {
 				return
 			}
-			assert.Equal(t, res, tc.wantRes)
+			assert.Equal(t, tc.wantRes, res)
 		})
 	}
 }

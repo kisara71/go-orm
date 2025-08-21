@@ -66,8 +66,9 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 	}, nil
 }
 
-func (s *Selector[T]) Select(selectables ...Selectable) {
+func (s *Selector[T]) Select(selectables ...Selectable) *Selector[T] {
 	s.selectables = selectables
+	return s
 }
 
 func (s *Selector[T]) From(table string) *Selector[T] {
@@ -152,6 +153,9 @@ func (s *Selector[T]) buildSelectables() error {
 				if err := buildAggregates(se, s.sb, s.m.fields); err != nil {
 					return err
 				}
+			case RawExpression:
+				s.sb.WriteString(se.expression)
+				s.args = append(s.args, se.args...)
 			}
 
 		}

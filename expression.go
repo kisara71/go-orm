@@ -6,6 +6,24 @@ type Expression interface {
 	expr()
 }
 
+type RawExpression struct {
+	expression string
+	args       []any
+}
+
+func Raw(expr string, args ...any) RawExpression {
+	return RawExpression{
+		expression: expr,
+		args:       args,
+	}
+}
+func (r RawExpression) AsPredicate() Predicate {
+	return Predicate{
+		left: r,
+	}
+}
+func (r RawExpression) expr()       {}
+func (r RawExpression) selectable() {}
 func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[string]*fieldInfo) error {
 	if p == nil {
 		return nil
@@ -22,8 +40,10 @@ func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[
 		if ok {
 			sb.WriteString(") ")
 		}
-		sb.WriteString(t.op.String())
-		sb.WriteByte(' ')
+		if t.op != "" {
+			sb.WriteString(t.op.String())
+			sb.WriteByte(' ')
+		}
 		_, ok = t.right.(Predicate)
 		if ok {
 			sb.WriteByte('(')
@@ -42,6 +62,9 @@ func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[
 	case Arg:
 		sb.WriteByte('?')
 		*args = append(*args, t.val)
+	case RawExpression:
+		sb.WriteString(t.expression)
+		*args = append(*args, t.args...)
 	}
 	return nil
 }
@@ -57,6 +80,11 @@ func buildColumns(col Column, sb *strings.Builder, fields map[string]*fieldInfo)
 	sb.WriteByte('`')
 	sb.WriteString(fields[col.name].colName)
 	sb.WriteByte('`')
+	if col.alias != "" {
+		sb.WriteString(" AS `")
+		sb.WriteString(col.alias)
+		sb.WriteByte('`')
+	}
 	return nil
 }
 
@@ -67,5 +95,10 @@ func buildAggregates(aggregate Aggregate, sb *strings.Builder, fields map[string
 		return err
 	}
 	sb.WriteByte(')')
+	if aggregate.alias != "" {
+		sb.WriteString(" AS `")
+		sb.WriteString(aggregate.alias)
+		sb.WriteByte('`')
+	}
 	return nil
 }
