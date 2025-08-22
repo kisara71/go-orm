@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-func TestInsertor_Build(t *testing.T) {
+func TestInsertor_Mysql_Build(t *testing.T) {
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	db := OpenDB(mockDB)
+	db := OpenDB(mockDB, WithDialect(&mysqlDialect{}))
 	type TestModel struct {
 		ID      int64
 		Name    string
@@ -115,7 +115,7 @@ func TestInsertor_Build(t *testing.T) {
 					Valid:  true,
 					String: "hhha",
 				},
-			}).OnDuplicateKey().Update(Assign("Name", "shi")),
+			}).OnConflict().Update(Assign("Name", "shi")),
 		},
 		{
 			name: "on duplicate update assign and column",
@@ -135,7 +135,7 @@ func TestInsertor_Build(t *testing.T) {
 					Valid:  true,
 					String: "hhha",
 				},
-			}).OnDuplicateKey().Update(Assign("Name", "shi"), C("Address")),
+			}).OnConflict().Update(Assign("Name", "shi"), C("Address")),
 		},
 	}
 
@@ -147,6 +147,113 @@ func TestInsertor_Build(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tc.wantQuery, res)
+		})
+	}
+}
+func TestInsertor_Exec_MySQL(t *testing.T) {
+	mockDB, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer mockDB.Close()
+
+	db := OpenDB(mockDB, WithDialect(&mysqlDialect{}))
+
+	type TestModel struct {
+		ID      int64
+		Name    string
+		Address sql.NullString
+	}
+
+	testCases := []struct {
+		name         string
+		values       []*TestModel
+		onDuplicate  []Assignable
+		mockExpect   func()
+		wantLastID   int64
+		wantAffected int64
+		wantErr      error
+	}{
+		{
+			name: "single insert",
+			values: []*TestModel{
+				{ID: 1, Name: "wang"},
+			},
+			mockExpect: func() {
+				mock.ExpectExec("INSERT INTO `test_model`").
+					WithArgs(int64(1), "wang", sql.NullString{}).
+					WillReturnResult(sqlmock.NewResult(101, 1))
+			},
+			wantLastID:   101,
+			wantAffected: 1,
+			wantErr:      nil,
+		},
+		{
+			name: "multi insert",
+			values: []*TestModel{
+				{ID: 1, Name: "wang"},
+				{ID: 2, Name: "li"},
+			},
+			mockExpect: func() {
+				mock.ExpectExec("INSERT INTO `test_model`").
+					WithArgs(int64(1), "wang", sql.NullString{},
+						int64(2), "li", sql.NullString{}).
+					WillReturnResult(sqlmock.NewResult(102, 2))
+			},
+			wantLastID:   102,
+			wantAffected: 2,
+			wantErr:      nil,
+		},
+		{
+			name: "on duplicate key update",
+			values: []*TestModel{
+				{ID: 1, Name: "wang"},
+			},
+			onDuplicate: []Assignable{Assign("Name", "shi")},
+			mockExpect: func() {
+				mock.ExpectExec("INSERT INTO `test_model`").
+					WithArgs(int64(1), "wang", sql.NullString{}, "shi").
+					WillReturnResult(sqlmock.NewResult(103, 1))
+			},
+			wantLastID:   103,
+			wantAffected: 1,
+			wantErr:      nil,
+		},
+		{
+			name:         "no values",
+			values:       nil,
+			mockExpect:   nil,
+			wantLastID:   0,
+			wantAffected: 0,
+			wantErr:      ErrInsertNoValues,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			insertor := NewInsertor[TestModel](db)
+			if len(tc.values) > 0 {
+				insertor = insertor.Values(tc.values...)
+			}
+			if len(tc.onDuplicate) > 0 {
+				insertor = insertor.OnConflict().Update(tc.onDuplicate...)
+			}
+
+			if tc.mockExpect != nil {
+				tc.mockExpect()
+			}
+
+			res := insertor.Exec(context.Background())
+			if tc.wantErr != nil {
+				assert.Equal(t, tc.wantErr, res.Err())
+				return
+			}
+			assert.NoError(t, res.Err())
+			lastID, _ := res.LastInsertID()
+			assert.Equal(t, tc.wantLastID, lastID)
+			rowsAffected, _ := res.RowsAffected()
+			assert.Equal(t, tc.wantAffected, rowsAffected)
+
+			err := mock.ExpectationsWereMet()
+			assert.NoError(t, err)
 		})
 	}
 }

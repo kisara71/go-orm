@@ -3,44 +3,51 @@ package go_orm
 import (
 	"context"
 	"reflect"
-	"strings"
 )
 
 type Insertor[T any] struct {
-	args           []any
-	columns        []string
-	db             *DB
-	m              *model
-	sb             *strings.Builder
-	values         []*T
-	onDuplicateKey *OnDuplicateKey
+	columns    []string
+	db         *DB
+	values     []*T
+	onConflict *OnConflict
+
+	builder *builder
 }
 
 func NewInsertor[T any](db *DB) *Insertor[T] {
 	return &Insertor[T]{
-		db: db,
-		sb: &strings.Builder{},
+		db:     db,
+		values: make([]*T, 0, 16),
 	}
 }
 
-type OnDuplicateKeyBuilder[T any] struct {
-	i *Insertor[T]
+type OnConflictBuilder[T any] struct {
+	i          *Insertor[T]
+	onConflict *OnConflict
 }
 
-type OnDuplicateKey struct {
-	assigns []Assignable
+type OnConflict struct {
+	assigns         []Assignable
+	conflictColumns []Column
 }
 
-func (o *OnDuplicateKeyBuilder[T]) Update(assigns ...Assignable) *Insertor[T] {
-	o.i.onDuplicateKey = &OnDuplicateKey{
-		assigns: assigns,
-	}
+func (o *OnConflictBuilder[T]) Update(assigns ...Assignable) *Insertor[T] {
+	o.onConflict.assigns = append(o.onConflict.assigns, assigns...)
+	o.i.onConflict = o.onConflict
 	return o.i
 }
+func (o *OnConflictBuilder[T]) Columns(cols ...Column) *OnConflictBuilder[T] {
+	o.onConflict.conflictColumns = append(o.onConflict.conflictColumns, cols...)
+	return o
+}
 
-func (i *Insertor[T]) OnDuplicateKey() *OnDuplicateKeyBuilder[T] {
-	return &OnDuplicateKeyBuilder[T]{
+func (i *Insertor[T]) OnConflict() *OnConflictBuilder[T] {
+	return &OnConflictBuilder[T]{
 		i: i,
+		onConflict: &OnConflict{
+			assigns:         make([]Assignable, 0, 8),
+			conflictColumns: make([]Column, 0, 4),
+		},
 	}
 }
 
@@ -48,101 +55,95 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 	if len(i.values) == 0 {
 		return nil, ErrInsertNoValues
 	}
-	var err error
-	i.m, err = i.db.registry.Get(new(T))
+	m, err := i.db.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
-	i.sb.WriteString("INSERT INTO ")
-	i.sb.WriteByte('`')
-	i.sb.WriteString(i.m.tableName)
-	i.sb.WriteString("` ")
+	i.builder = NewBuilder(m, i.db.dialect)
+	i.builder.sb.WriteString("INSERT INTO ")
 
-	fields := i.m.fields
+	i.builder.quote(i.builder.m.tableName)
+	i.builder.buildByte(' ')
+	fields := i.builder.m.fields
 	if len(i.columns) == 0 {
-		i.sb.WriteByte('(')
-		for idx, fd := range i.m.fields {
+		i.builder.buildByte('(')
+		for idx, fd := range i.builder.m.fields {
 			if idx > 0 {
-				i.sb.WriteString(", ")
+				i.builder.sb.WriteString(", ")
 			}
-			i.sb.WriteByte('`')
-			i.sb.WriteString(fd.colName)
-			i.sb.WriteByte('`')
+			i.builder.quote(fd.colName)
 		}
-		i.sb.WriteByte(')')
+		i.builder.buildByte(')')
 	} else {
 		fields = make([]*fieldInfo, 0, len(i.columns))
-		i.sb.WriteByte('(')
+		i.builder.buildByte('(')
 		for idx, col := range i.columns {
-			if fd, ok := i.m.goMap[col]; !ok {
+			if fd, ok := i.builder.m.goMap[col]; !ok {
 				return nil, ErrUnknownField
 			} else {
 				fields = append(fields, fd)
 			}
 			if idx > 0 {
-				i.sb.WriteString(", ")
+				i.builder.buildString(", ")
 			}
-			i.sb.WriteByte('`')
-			i.sb.WriteString(fields[idx].colName)
-			i.sb.WriteByte('`')
+			i.builder.quote(fields[idx].colName)
 		}
-		i.sb.WriteByte(')')
+		i.builder.buildByte(')')
 	}
 
-	i.sb.WriteString(" VALUES ")
+	i.builder.buildString(" VALUES ")
 	for idx1, val := range i.values {
 		if idx1 > 0 {
-			i.sb.WriteString(", ")
+			i.builder.buildString(", ")
 		}
 		rval := reflect.ValueOf(val).Elem()
-		i.sb.WriteByte('(')
+		i.builder.buildByte('(')
 		for idx2, fd := range fields {
 			if idx2 > 0 {
-				i.sb.WriteString(", ")
+				i.builder.buildString(", ")
 			}
-			i.sb.WriteByte('?')
-			i.args = append(i.args, rval.FieldByName(fd.goName).Interface())
+			i.builder.buildByte('?')
+			i.builder.addArgs(rval.FieldByName(fd.goName).Interface())
 		}
-		i.sb.WriteByte(')')
+		i.builder.buildByte(')')
 	}
 
-	if i.onDuplicateKey != nil {
-		i.sb.WriteString(" ON DUPLICATE KEY UPDATE ")
-		for idx, assign := range i.onDuplicateKey.assigns {
-			if idx > 0 {
-				i.sb.WriteString(", ")
-			}
-			switch as := assign.(type) {
-			case Assignment:
-				if err := buildColumns(C(as.column), i.sb, i.m.goMap); err != nil {
-					return nil, err
-				}
-				i.sb.WriteString(" = ?")
-				i.args = append(i.args, as.val)
-			case Column:
-				err := buildColumns(as, i.sb, i.m.goMap)
-				if err != nil {
-					return nil, ErrUnknownField
-				}
-				i.sb.WriteString(" = VALUES(")
-				_ = buildColumns(as, i.sb, i.m.goMap)
-				i.sb.WriteByte(')')
-			}
+	if i.onConflict != nil {
+		if err = i.db.dialect.BuildUpsert(i.builder, i.onConflict); err != nil {
+			return nil, err
 		}
 	}
-	i.sb.WriteByte(';')
+	i.builder.buildByte(';')
 	return &Query{
-		SQL:  i.sb.String(),
-		Args: i.args,
+		SQL:  i.builder.getSQL(),
+		Args: i.builder.getArgs(),
 	}, nil
 }
 
 func (i *Insertor[T]) Values(vals ...*T) *Insertor[T] {
-	i.values = vals
+	i.values = append(i.values, vals...)
 	return i
 }
 
 func (i *Insertor[T]) Columns(cols ...string) *Insertor[T] {
 	i.columns = cols
 	return i
+}
+func (i *Insertor[T]) Exec(ctx context.Context) *Result {
+	query, err := i.Build(ctx)
+	if err != nil {
+		return &Result{
+			err: err,
+		}
+	}
+	res, err := i.db.db.ExecContext(ctx, query.SQL, query.Args...)
+	if err != nil {
+		return &Result{
+			err: err,
+		}
+	}
+	return &Result{
+		err: nil,
+		res: res,
+	}
 }

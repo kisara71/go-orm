@@ -17,7 +17,7 @@ func TestSelector(t *testing.T) {
 	}
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	db := OpenDB(mockDB)
+	db := OpenDB(mockDB, WithDialect(&mysqlDialect{}))
 	testCases := []struct {
 		name      string
 		builder   *Selector[TestModel]
@@ -212,7 +212,7 @@ func TestSelector(t *testing.T) {
 func TestSelector_Get(t *testing.T) {
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	db := OpenDB(mockDB)
+	db := OpenDB(mockDB, WithDialect(MySQLDialect))
 
 	type TestModel struct {
 		ID      int64  `orm:" column=id_t"`
@@ -310,7 +310,7 @@ func TestSelector_Get(t *testing.T) {
 func TestSelector_GetMulti(t *testing.T) {
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	db := OpenDB(mockDB)
+	db := OpenDB(mockDB, WithDialect(MySQLDialect))
 
 	type TestModel struct {
 		ID      int64  `orm:"column=id_t"`

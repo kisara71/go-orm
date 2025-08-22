@@ -2,17 +2,14 @@ package go_orm
 
 import (
 	"context"
-	"strings"
 )
 
 type Selector[T any] struct {
 	tableName   string
-	sb          *strings.Builder
 	where       []Predicate
 	selectables []Selectable
-	args        []any
 	db          *DB
-	m           *model
+	builder     *builder
 }
 
 type Selectable interface {
@@ -23,8 +20,6 @@ func NewSelector[T any](db *DB) *Selector[T] {
 
 	return &Selector[T]{
 		db:    db,
-		sb:    &strings.Builder{},
-		args:  make([]any, 0, 4),
 		where: make([]Predicate, 0, 4),
 	}
 }
@@ -34,35 +29,32 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.m = m
+	s.builder = NewBuilder(m, s.db.dialect)
 	err = s.buildSelectables()
 	if err != nil {
 		return nil, err
 	}
 
 	if s.tableName == "" {
-		s.sb.WriteByte('`')
-		s.sb.WriteString(s.m.tableName)
-		s.sb.WriteByte('`')
+		s.builder.quote(s.builder.m.tableName)
 	} else {
-		s.sb.WriteString(s.tableName)
+		s.builder.buildString(s.tableName)
 	}
 	if len(s.where) > 0 {
-		s.sb.WriteString(" WHERE ")
+		s.builder.buildString(" WHERE ")
 		p := s.where[0]
 		for i := 1; i < len(s.where); i++ {
 			p = p.And(s.where[i])
 		}
-		s.args = make([]any, 0, 4)
-		err = buildExpression(s.sb, &s.args, p, s.m.goMap)
+		err = s.builder.buildExpression(p)
 		if err != nil {
 			return nil, err
 		}
 	}
-	s.sb.WriteByte(';')
+	s.builder.buildByte(';')
 	return &Query{
-		SQL:  s.sb.String(),
-		Args: s.args,
+		SQL:  s.builder.getSQL(),
+		Args: s.builder.getArgs(),
 	}, nil
 }
 
@@ -97,7 +89,7 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	}
 
 	t := new(T)
-	uac, err := NewUnsafeAccessor(s.m, t)
+	uac, err := NewUnsafeAccessor(s.builder.m, t)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +115,7 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 	res := make([]*T, 0, 32)
 	for rows.Next() {
 		t := new(T)
-		uac, err := NewUnsafeAccessor(s.m, t)
+		uac, err := NewUnsafeAccessor(s.builder.m, t)
 		if err != nil {
 			return nil, err
 		}
@@ -138,30 +130,30 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 
 func (s *Selector[T]) buildSelectables() error {
 	if len(s.selectables) > 0 {
-		s.sb.WriteString("SELECT ")
+		s.builder.buildString("SELECT ")
 
 		for idx, selectable := range s.selectables {
 			if idx > 0 {
-				s.sb.WriteString(", ")
+				s.builder.buildString(", ")
 			}
 			switch se := selectable.(type) {
 			case Column:
-				if err := buildColumns(se, s.sb, s.m.goMap); err != nil {
+				if err := s.builder.buildColumn(se); err != nil {
 					return err
 				}
 			case Aggregate:
-				if err := buildAggregates(se, s.sb, s.m.goMap); err != nil {
+				if err := s.builder.buildAggregate(se); err != nil {
 					return err
 				}
 			case RawExpression:
-				s.sb.WriteString(se.expression)
-				s.args = append(s.args, se.args...)
+				s.builder.buildString(se.expression)
+				s.builder.addArgs(se.args...)
 			}
 
 		}
-		s.sb.WriteString(" FROM ")
+		s.builder.buildString(" FROM ")
 	} else {
-		s.sb.WriteString("SELECT * FROM ")
+		s.builder.buildString("SELECT * FROM ")
 	}
 	return nil
 }

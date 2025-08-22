@@ -15,7 +15,7 @@ func TestDeletor_Build(t *testing.T) {
 	}
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	db := OpenDB(mockDB)
+	db := OpenDB(mockDB, WithDialect(&mysqlDialect{}))
 	testCases := []struct {
 		name      string
 		builder   *Deletor[TestModel]

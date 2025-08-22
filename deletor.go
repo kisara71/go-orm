@@ -2,24 +2,19 @@ package go_orm
 
 import (
 	"context"
-	"strings"
 )
 
 type Deletor[T any] struct {
-	sb        *strings.Builder
 	tableName string
 	where     []Predicate
-	args      []any
 	db        *DB
-	m         *model
+	builder   *builder
 }
 
 func NewDeletor[T any](db *DB) *Deletor[T] {
 	return &Deletor[T]{
 		db:    db,
 		where: make([]Predicate, 0, 4),
-		args:  make([]any, 0, 4),
-		sb:    &strings.Builder{},
 	}
 }
 
@@ -28,31 +23,27 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	d.m = m
-	d.sb = &strings.Builder{}
-	d.sb.WriteString("DELETE FROM ")
+	d.builder = NewBuilder(m, d.db.dialect)
+	d.builder.buildString("DELETE FROM ")
 	if d.tableName == "" {
-		d.sb.WriteByte('`')
-		d.sb.WriteString(m.tableName)
-		d.sb.WriteByte('`')
+		d.builder.quote(d.builder.m.tableName)
 	} else {
-		d.sb.WriteString(d.tableName)
+		d.builder.buildString(d.tableName)
 	}
 	if len(d.where) > 0 {
-		d.sb.WriteString(" WHERE ")
+		d.builder.buildString(" WHERE ")
 		p := d.where[0]
 		for i := 1; i < len(d.where); i++ {
 			p = p.And(d.where[i])
 		}
-		d.args = make([]any, 0, 4)
-		err = buildExpression(d.sb, &d.args, p, d.m.goMap)
+		err = d.builder.buildExpression(p)
 		if err != nil {
 			return nil, err
 		}
 	}
 	return &Query{
-		SQL:  d.sb.String(),
-		Args: d.args,
+		SQL:  d.builder.getSQL(),
+		Args: d.builder.getArgs(),
 	}, nil
 }
 func (d *Deletor[T]) From(tableName string) {
@@ -60,4 +51,23 @@ func (d *Deletor[T]) From(tableName string) {
 }
 func (d *Deletor[T]) Where(predicate ...Predicate) {
 	d.where = predicate
+}
+
+func (d *Deletor[T]) Exec(ctx context.Context) *Result {
+	query, err := d.Build(ctx)
+	if err != nil {
+		return &Result{
+			err: err,
+		}
+	}
+	res, err := d.db.db.ExecContext(ctx, query.SQL, query.Args...)
+	if err != nil {
+		return &Result{
+			err: err,
+		}
+	}
+	return &Result{
+		err: nil,
+		res: res,
+	}
 }

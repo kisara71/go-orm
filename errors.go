@@ -1,6 +1,8 @@
 package go_orm
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	ErrInvalidModel     = errors.New("invalid type of model, expected struct or pointer")
@@ -11,4 +13,5 @@ var (
 	ErrScanFailed       = errors.New("scan data failed, may get unknown columns")
 	ErrInvalidArguments = errors.New("invalid arguments")
 	ErrInsertNoValues   = errors.New("call insert with out values")
+	ErrUnsupported      = errors.New("unsupported operation for this dialect")
 )

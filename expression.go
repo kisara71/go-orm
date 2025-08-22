@@ -1,7 +1,5 @@
 package go_orm
 
-import "strings"
-
 type Expression interface {
 	expr()
 }
@@ -24,81 +22,3 @@ func (r RawExpression) AsPredicate() Predicate {
 }
 func (r RawExpression) expr()       {}
 func (r RawExpression) selectable() {}
-func buildExpression(sb *strings.Builder, args *[]any, p Expression, fields map[string]*fieldInfo) error {
-	if p == nil {
-		return nil
-	}
-	switch t := p.(type) {
-	case Predicate:
-		_, ok := t.left.(Predicate)
-		if ok {
-			sb.WriteByte('(')
-		}
-		if err := buildExpression(sb, args, t.left, fields); err != nil {
-			return err
-		}
-		if ok {
-			sb.WriteString(") ")
-		}
-		if t.op != "" {
-			sb.WriteString(t.op.String())
-			sb.WriteByte(' ')
-		}
-		_, ok = t.right.(Predicate)
-		if ok {
-			sb.WriteByte('(')
-		}
-		if err := buildExpression(sb, args, t.right, fields); err != nil {
-			return err
-		}
-		if ok {
-			sb.WriteByte(')')
-		}
-	case Column:
-		if err := buildColumns(t, sb, fields); err != nil {
-			return err
-		}
-		sb.WriteByte(' ')
-	case Arg:
-		sb.WriteByte('?')
-		*args = append(*args, t.val)
-	case RawExpression:
-		sb.WriteString(t.expression)
-		*args = append(*args, t.args...)
-	}
-	return nil
-}
-
-func buildColumns(col Column, sb *strings.Builder, fields map[string]*fieldInfo) error {
-	if col.name == "*" {
-		sb.WriteByte('*')
-		return nil
-	}
-	if _, ok := fields[col.name]; !ok {
-		return ErrUnknownField
-	}
-	sb.WriteByte('`')
-	sb.WriteString(fields[col.name].colName)
-	sb.WriteByte('`')
-	if col.alias != "" {
-		sb.WriteString(" AS `")
-		sb.WriteString(col.alias)
-		sb.WriteByte('`')
-	}
-	return nil
-}
-
-func buildAggregates(aggregate Aggregate, sb *strings.Builder, fields map[string]*fieldInfo) error {
-	sb.WriteString(aggregate.fn)
-	sb.WriteByte('(')
-	if err := buildColumns(aggregate.col, sb, fields); err != nil {
-		return err
-	}
-	sb.WriteByte(')')
-	if aggregate.alias != "" {
-		sb.WriteString(" AS `")
-		sb.WriteString(aggregate.alias)
-		sb.WriteByte('`')
-	}
-	return nil
-}
