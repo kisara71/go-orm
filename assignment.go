@@ -5,13 +5,13 @@ type Assignable interface {
 }
 
 type Assignment struct {
-	column string
+	column Column
 	val    any
 }
 
 func Assign(column string, val any) Assignment {
 	return Assignment{
-		column: column,
+		column: C(column),
 		val:    val,
 	}
 }

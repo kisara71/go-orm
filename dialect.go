@@ -38,7 +38,7 @@ func (m *mysqlDialect) BuildUpsert(builder *builder, opk *OnConflict) error {
 		}
 		switch as := assign.(type) {
 		case Assignment:
-			if err := builder.buildColumn(C(as.column)); err != nil {
+			if err := builder.buildColumn(as.column); err != nil {
 				return err
 			}
 			builder.buildString(" = ?")
@@ -78,7 +78,7 @@ func (s *sqliteDialect) BuildUpsert(builder *builder, opk *OnConflict) error {
 		}
 		switch as := assign.(type) {
 		case Assignment:
-			if err := builder.buildColumn(C(as.column)); err != nil {
+			if err := builder.buildColumn(as.column); err != nil {
 				return err
 			}
 			builder.buildString(" = ?")
@@ -117,7 +117,7 @@ func (p *postgreDialect) BuildUpsert(builder *builder, opk *OnConflict) error {
 		}
 		switch as := assign.(type) {
 		case Assignment:
-			if err := builder.buildColumn(C(as.column)); err != nil {
+			if err := builder.buildColumn(as.column); err != nil {
 				return err
 			}
 			builder.buildString(" = ?")

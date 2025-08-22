@@ -36,7 +36,7 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 		for i := 1; i < len(d.where); i++ {
 			p = p.And(d.where[i])
 		}
-		err = d.builder.buildExpression(p, ClauseDelete)
+		err = d.builder.buildExpression(p, ClauseWhere)
 		if err != nil {
 			return nil, err
 		}
