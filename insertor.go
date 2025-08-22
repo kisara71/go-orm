@@ -2,7 +2,6 @@ package go_orm
 
 import (
 	"context"
-	"reflect"
 )
 
 type Insertor[T any] struct {
@@ -96,14 +95,22 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 		if idx1 > 0 {
 			i.builder.buildString(", ")
 		}
-		rval := reflect.ValueOf(val).Elem()
+		//rval := reflect.ValueOf(val).Elem()
+		accessor, err := NewUnsafeAccessor(i.builder.m, val)
+		if err != nil {
+			return nil, err
+		}
 		i.builder.buildByte('(')
 		for idx2, fd := range fields {
 			if idx2 > 0 {
 				i.builder.buildString(", ")
 			}
 			i.builder.buildByte('?')
-			i.builder.addArgs(rval.FieldByName(fd.goName).Interface())
+			arg, err := accessor.Fetch(fd.goName)
+			if err != nil {
+				return nil, err
+			}
+			i.builder.addArgs(arg)
 		}
 		i.builder.buildByte(')')
 	}

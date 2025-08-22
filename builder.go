@@ -54,7 +54,7 @@ func (b *builder) buildColumn(col Column) error {
 	return nil
 }
 
-func (b *builder) buildExpression(exp Expression) error {
+func (b *builder) buildExpression(exp Expression, clause Clause) error {
 	if exp == nil {
 		return nil
 	}
@@ -64,7 +64,7 @@ func (b *builder) buildExpression(exp Expression) error {
 		if ok {
 			b.sb.WriteByte('(')
 		}
-		if err := b.buildExpression(t.left); err != nil {
+		if err := b.buildExpression(t.left, clause); err != nil {
 			return err
 		}
 		if ok {
@@ -78,7 +78,7 @@ func (b *builder) buildExpression(exp Expression) error {
 		if ok {
 			b.sb.WriteByte('(')
 		}
-		if err := b.buildExpression(t.right); err != nil {
+		if err := b.buildExpression(t.right, clause); err != nil {
 			return err
 		}
 		if ok {
@@ -95,7 +95,16 @@ func (b *builder) buildExpression(exp Expression) error {
 	case RawExpression:
 		b.sb.WriteString(t.expression)
 		b.addArgs(t.args...)
+	case Aggregate:
+		if clause == ClauseWhere {
+			return ErrUnsupportedType
+		}
+		if err := b.buildAggregate(t); err != nil {
+			return err
+		}
+		b.sb.WriteByte(' ')
 	}
+
 	return nil
 }
 
@@ -114,5 +123,8 @@ func (b *builder) buildAggregate(aggregate Aggregate) error {
 }
 
 func (b *builder) addArgs(arg ...any) {
+	if len(arg) == 0 {
+		return
+	}
 	b.args = append(b.args, arg...)
 }

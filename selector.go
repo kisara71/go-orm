@@ -10,6 +10,28 @@ type Selector[T any] struct {
 	selectables []Selectable
 	db          *DB
 	builder     *builder
+	groupExpr   []Expression
+	having      []Predicate
+	order       []OrderBy
+	limit       int64
+	offset      int64
+}
+type OrderBy struct {
+	col   Column
+	order string
+}
+
+func ASC(col string) OrderBy {
+	return OrderBy{
+		col:   C(col),
+		order: "ASC",
+	}
+}
+func DESC(col string) OrderBy {
+	return OrderBy{
+		col:   C(col),
+		order: "DESC",
+	}
 }
 
 type Selectable interface {
@@ -19,8 +41,11 @@ type Selectable interface {
 func NewSelector[T any](db *DB) *Selector[T] {
 
 	return &Selector[T]{
-		db:    db,
-		where: make([]Predicate, 0, 4),
+		db:        db,
+		where:     make([]Predicate, 0, 4),
+		groupExpr: make([]Expression, 0, 4),
+		order:     make([]OrderBy, 0, 2),
+		having:    make([]Predicate, 0, 4),
 	}
 }
 
@@ -46,10 +71,61 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 		for i := 1; i < len(s.where); i++ {
 			p = p.And(s.where[i])
 		}
-		err = s.builder.buildExpression(p)
+		err = s.builder.buildExpression(p, ClauseWhere)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if len(s.groupExpr) > 0 {
+		s.builder.buildString(" GROUP BY ")
+		for idx, expr := range s.groupExpr {
+			if idx > 0 {
+				s.builder.buildString(", ")
+			}
+			switch exp := expr.(type) {
+			case Column:
+				if err := s.builder.buildColumn(exp); err != nil {
+					return nil, err
+				}
+			case RawExpression:
+				s.builder.buildString(exp.expression)
+				s.builder.addArgs(exp.args...)
+			default:
+				return nil, ErrUnsupportedType
+			}
+		}
+	}
+	if len(s.having) > 0 {
+		s.builder.buildString(" HAVING ")
+		p := s.having[0]
+		for i := 1; i < len(s.having); i++ {
+			p = p.And(s.having[i])
+		}
+		err = s.builder.buildExpression(p, ClauseHaving)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(s.order) > 0 {
+		s.builder.buildString(" ORDER BY ")
+		for idx, order := range s.order {
+			if idx > 0 {
+				s.builder.buildString(", ")
+			}
+			if err := s.builder.buildColumn(order.col); err != nil {
+				return nil, err
+			}
+			s.builder.buildByte(' ')
+			s.builder.buildString(order.order)
+		}
+	}
+	if s.limit > 0 {
+		s.builder.buildString(" LIMIT ?")
+		s.builder.addArgs(s.limit)
+	}
+	if s.offset > 0 {
+		s.builder.buildString(" OFFSET ?")
+		s.builder.addArgs(s.offset)
 	}
 	s.builder.buildByte(';')
 	return &Query{
@@ -100,6 +176,29 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 	return t, nil
 }
 
+func (s *Selector[T]) GroupBy(expr ...Expression) *Selector[T] {
+	s.groupExpr = append(s.groupExpr, expr...)
+	return s
+}
+func (s *Selector[T]) Having(p ...Predicate) *Selector[T] {
+	s.having = append(s.having, p...)
+	return s
+}
+
+func (s *Selector[T]) OrderBy(by ...OrderBy) *Selector[T] {
+	s.order = append(s.order, by...)
+	return s
+}
+
+func (s *Selector[T]) Limit(limit int64) *Selector[T] {
+	s.limit = limit
+	return s
+}
+
+func (s *Selector[T]) Offset(offset int64) *Selector[T] {
+	s.offset = offset
+	return s
+}
 func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 	query, err := s.Build(ctx)
 	if err != nil {

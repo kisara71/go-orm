@@ -14,4 +14,5 @@ var (
 	ErrInvalidArguments = errors.New("invalid arguments")
 	ErrInsertNoValues   = errors.New("call insert with out values")
 	ErrUnsupported      = errors.New("unsupported operation for this dialect")
+	ErrUnsupportedType  = errors.New("unsupported param type")
 )

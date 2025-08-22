@@ -195,6 +195,88 @@ func TestSelector(t *testing.T) {
 				SQL:  "SELECT `age` AS `age_as`, MAX(`name`) AS `name_as` FROM `test_model`;",
 				Args: []any{},
 			},
+		}, {
+			name: "group by",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Sum("Age")).GroupBy(C("Age"), Raw("YEAR(`age`)"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT SUM(`age`) FROM `test_model` GROUP BY `age`, YEAR(`age`);",
+				Args: []any{},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "having with aggregate GT",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Sum("Age")).
+					GroupBy(C("Age")).
+					Having(Sum("Age").GT(100))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT SUM(`age`) FROM `test_model` GROUP BY `age` HAVING SUM(`age`) > ?;",
+				Args: []any{100},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "having with column condition",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Sum("Age")).
+					GroupBy(C("Age")).
+					Having(C("Age").GT(30))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT SUM(`age`) FROM `test_model` GROUP BY `age` HAVING `age` > ?;",
+				Args: []any{30},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "having with aggregate AND column",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Sum("Age")).
+					GroupBy(C("Age")).
+					Having(Sum("Age").GT(100).And(C("Age").LT(50)))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT SUM(`age`) FROM `test_model` GROUP BY `age` HAVING (SUM(`age`) > ?) AND (`age` < ?);",
+				Args: []any{100, 50},
+			},
+			wantErr: nil,
+		},
+		{
+			name: "order",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Raw("DISTINCT `age`"), C("Name")).OrderBy(ASC("Age"), DESC("Age"))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT DISTINCT `age`, `name` FROM `test_model` ORDER BY `age` ASC, `age` DESC;",
+				Args: []any{},
+			},
+		},
+		{
+			name: "limit offset",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(Raw("DISTINCT `age`"), C("Name")).OrderBy(ASC("Age"), DESC("Age")).
+					Limit(1).Offset(10)
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT DISTINCT `age`, `name` FROM `test_model` ORDER BY `age` ASC, `age` DESC LIMIT ? OFFSET ?;",
+				Args: []any{int64(1), int64(10)},
+			},
 		},
 	}
 	for _, tc := range testCases {

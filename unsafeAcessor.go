@@ -54,6 +54,6 @@ func (u *unsafeAccessor) Fetch(field string) (any, error) {
 	} else {
 		address := reflect.ValueOf(u.entity).UnsafePointer()
 		return reflect.NewAt(fd.typ,
-			unsafe.Pointer((uintptr)(address)+fd.offset)).Interface(), nil
+			unsafe.Pointer((uintptr)(address)+fd.offset)).Elem().Interface(), nil
 	}
 }

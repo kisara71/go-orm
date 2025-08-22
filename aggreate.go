@@ -6,7 +6,9 @@ type Aggregate struct {
 	alias string
 }
 
-func (a Aggregate) selectable() {}
+func (Aggregate) expr()       {}
+func (Aggregate) selectable() {}
+
 func (a Aggregate) As(alias string) Aggregate {
 	return Aggregate{
 		fn:    a.fn,
@@ -51,5 +53,27 @@ func Avg(column string) Aggregate {
 	return Aggregate{
 		fn:  "AVG",
 		col: C(column),
+	}
+}
+
+func (a Aggregate) LT(val any) Predicate {
+	return Predicate{
+		left:  a,
+		op:    opLT,
+		right: Arg{val: val},
+	}
+}
+func (a Aggregate) GT(val any) Predicate {
+	return Predicate{
+		left:  a,
+		op:    opGT,
+		right: Arg{val: val},
+	}
+}
+func (a Aggregate) Eq(val any) Predicate {
+	return Predicate{
+		left:  a,
+		op:    opGT,
+		right: Arg{val: val},
 	}
 }

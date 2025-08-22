@@ -11,6 +11,14 @@ const (
 	opGT  op = ">"
 )
 
+type Clause int
+
+const (
+	ClauseWhere Clause = iota
+	ClauseHaving
+	ClauseDelete
+)
+
 func (o op) String() string {
 	return string(o)
 }
