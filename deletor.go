@@ -7,23 +7,26 @@ import (
 type Deletor[T any] struct {
 	tableName string
 	where     []Predicate
-	db        *DB
 	builder   *builder
+	sess      session
+	core      core
 }
 
-func NewDeletor[T any](db *DB) *Deletor[T] {
+func NewDeletor[T any](sess session) *Deletor[T] {
+	c := sess.getCore()
 	return &Deletor[T]{
-		db:    db,
+		core:  c,
 		where: make([]Predicate, 0, 4),
+		sess:  sess,
 	}
 }
 
 func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
-	m, err := d.db.registry.Get(new(T))
+	m, err := d.core.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
-	d.builder = NewBuilder(m, d.db.dialect)
+	d.builder = NewBuilder(m, d.core.dialect)
 	d.builder.buildString("DELETE FROM ")
 	if d.tableName == "" {
 		d.builder.quote(d.builder.m.tableName)
@@ -60,7 +63,7 @@ func (d *Deletor[T]) Exec(ctx context.Context) *Result {
 			err: err,
 		}
 	}
-	res, err := d.db.db.ExecContext(ctx, query.SQL, query.Args...)
+	res, err := d.sess.execContext(ctx, query.SQL, query.Args...)
 	if err != nil {
 		return &Result{
 			err: err,

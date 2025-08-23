@@ -6,16 +6,18 @@ import (
 
 type Insertor[T any] struct {
 	columns    []string
-	db         *DB
 	values     []*T
 	onConflict *OnConflict
-
-	builder *builder
+	core       core
+	sess       session
+	builder    *builder
 }
 
-func NewInsertor[T any](db *DB) *Insertor[T] {
+func NewInsertor[T any](sess session) *Insertor[T] {
+	c := sess.getCore()
 	return &Insertor[T]{
-		db:     db,
+		sess:   sess,
+		core:   c,
 		values: make([]*T, 0, 16),
 	}
 }
@@ -54,11 +56,11 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 	if len(i.values) == 0 {
 		return nil, ErrInsertNoValues
 	}
-	m, err := i.db.registry.Get(new(T))
+	m, err := i.core.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
-	i.builder = NewBuilder(m, i.db.dialect)
+	i.builder = NewBuilder(m, i.core.dialect)
 	i.builder.sb.WriteString("INSERT INTO ")
 
 	i.builder.quote(i.builder.m.tableName)
@@ -116,7 +118,7 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 	}
 
 	if i.onConflict != nil {
-		if err = i.db.dialect.BuildUpsert(i.builder, i.onConflict); err != nil {
+		if err = i.core.dialect.BuildUpsert(i.builder, i.onConflict); err != nil {
 			return nil, err
 		}
 	}
@@ -143,7 +145,7 @@ func (i *Insertor[T]) Exec(ctx context.Context) *Result {
 			err: err,
 		}
 	}
-	res, err := i.db.db.ExecContext(ctx, query.SQL, query.Args...)
+	res, err := i.sess.execContext(ctx, query.SQL, query.Args...)
 	if err != nil {
 		return &Result{
 			err: err,

@@ -9,15 +9,18 @@ type Updater[T any] struct {
 	builder *builder
 	val     *T
 	assigns []Assignable
-	db      *DB
 	where   []Predicate
+	core    core
+	sess    session
 }
 
-func NewUpdater[T any](db *DB) *Updater[T] {
+func NewUpdater[T any](sess session) *Updater[T] {
+	c := sess.getCore()
 	return &Updater[T]{
-		db:      db,
+		core:    c,
 		assigns: make([]Assignable, 0, 8),
 		where:   make([]Predicate, 0, 4),
+		sess:    sess,
 	}
 }
 
@@ -37,12 +40,12 @@ func (u *Updater[T]) Where(p ...Predicate) *Updater[T] {
 }
 func (u *Updater[T]) Build(ctx context.Context) (*Query, error) {
 
-	m, err := u.db.registry.Get(new(T))
+	m, err := u.core.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
 
-	u.builder = NewBuilder(m, u.db.dialect)
+	u.builder = NewBuilder(m, u.core.dialect)
 
 	u.builder.buildString("UPDATE ")
 	u.builder.quote(u.builder.m.tableName)
@@ -97,4 +100,22 @@ func (u *Updater[T]) Build(ctx context.Context) (*Query, error) {
 		SQL:  u.builder.getSQL(),
 		Args: u.builder.getArgs(),
 	}, nil
+}
+func (u *Updater[T]) Exec(ctx context.Context) *Result {
+	query, err := u.Build(ctx)
+	if err != nil {
+		return &Result{
+			err: err,
+		}
+	}
+	res, err := u.sess.execContext(ctx, query.SQL, query.Args...)
+	if err != nil {
+		return &Result{
+			err: err,
+		}
+	}
+	return &Result{
+		res: res,
+		err: nil,
+	}
 }

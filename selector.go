@@ -8,7 +8,8 @@ type Selector[T any] struct {
 	tableName   string
 	where       []Predicate
 	selectables []Selectable
-	db          *DB
+	core        core
+	sess        session
 	builder     *builder
 	groupExpr   []Expression
 	having      []Predicate
@@ -38,23 +39,24 @@ type Selectable interface {
 	selectable()
 }
 
-func NewSelector[T any](db *DB) *Selector[T] {
-
+func NewSelector[T any](sess session) *Selector[T] {
+	c := sess.getCore()
 	return &Selector[T]{
-		db:        db,
+		core:      c,
 		where:     make([]Predicate, 0, 4),
 		groupExpr: make([]Expression, 0, 4),
+		sess:      sess,
 		order:     make([]OrderBy, 0, 2),
 		having:    make([]Predicate, 0, 4),
 	}
 }
 
 func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
-	m, err := s.db.registry.Get(new(T))
+	m, err := s.core.registry.Get(new(T))
 	if err != nil {
 		return nil, err
 	}
-	s.builder = NewBuilder(m, s.db.dialect)
+	s.builder = NewBuilder(m, s.core.dialect)
 	err = s.buildSelectables()
 	if err != nil {
 		return nil, err
@@ -155,7 +157,7 @@ func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
 		return nil, err
 	}
 
-	rows, err := s.db.db.QueryContext(ctx, query.SQL, query.Args...)
+	rows, err := s.sess.queryContext(ctx, query.SQL, query.Args...)
 	defer rows.Close()
 	if err != nil {
 		return nil, err
@@ -205,7 +207,7 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 		return nil, err
 	}
 
-	rows, err := s.db.db.QueryContext(ctx, query.SQL, query.Args...)
+	rows, err := s.sess.queryContext(ctx, query.SQL, query.Args...)
 	defer rows.Close()
 	if err != nil {
 		return nil, err
