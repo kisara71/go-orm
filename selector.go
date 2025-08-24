@@ -1,8 +1,8 @@
 package go_orm
 
-import (
-	"context"
-)
+import "github.com/kisara71/go-orm/middleware"
+
+var _ Builder = &Selector[any]{}
 
 type Selector[T any] struct {
 	tableName   string
@@ -51,15 +51,15 @@ func NewSelector[T any](sess session) *Selector[T] {
 	}
 }
 
-func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
+func (s *Selector[T]) Build(ctx *middleware.Context) error {
 	m, err := s.core.registry.Get(new(T))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	s.builder = NewBuilder(m, s.core.dialect)
 	err = s.buildSelectables()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if s.tableName == "" {
@@ -75,7 +75,7 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 		}
 		err = s.builder.buildExpression(p, ClauseWhere)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if len(s.groupExpr) > 0 {
@@ -87,13 +87,13 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 			switch exp := expr.(type) {
 			case Column:
 				if err := s.builder.buildColumn(exp); err != nil {
-					return nil, err
+					return err
 				}
 			case RawExpression:
 				s.builder.buildString(exp.expression)
 				s.builder.addArgs(exp.args...)
 			default:
-				return nil, ErrUnsupportedType
+				return ErrUnsupportedType
 			}
 		}
 	}
@@ -105,7 +105,7 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 		}
 		err = s.builder.buildExpression(p, ClauseHaving)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if len(s.order) > 0 {
@@ -115,7 +115,7 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 				s.builder.buildString(", ")
 			}
 			if err := s.builder.buildColumn(order.col); err != nil {
-				return nil, err
+				return err
 			}
 			s.builder.buildByte(' ')
 			s.builder.buildString(order.order)
@@ -130,10 +130,9 @@ func (s *Selector[T]) Build(ctx context.Context) (*Query, error) {
 		s.builder.addArgs(s.offset)
 	}
 	s.builder.buildByte(';')
-	return &Query{
-		SQL:  s.builder.getSQL(),
-		Args: s.builder.getArgs(),
-	}, nil
+	ctx.SetStatement(s.builder.getSQL())
+	ctx.SetArgs(s.builder.getArgs())
+	return nil
 }
 
 func (s *Selector[T]) Select(selectables ...Selectable) *Selector[T] {
@@ -149,33 +148,6 @@ func (s *Selector[T]) From(table string) *Selector[T] {
 func (s *Selector[T]) Where(p ...Predicate) *Selector[T] {
 	s.where = p
 	return s
-}
-
-func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
-	query, err := s.Build(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := s.sess.queryContext(ctx, query.SQL, query.Args...)
-	defer rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	if !rows.Next() {
-		return nil, ErrNoRecord
-	}
-
-	t := new(T)
-	uac, err := NewUnsafeAccessor(s.builder.m, t)
-	if err != nil {
-		return nil, err
-	}
-	err = uac.Set(rows)
-	if err != nil {
-		return nil, err
-	}
-	return t, nil
 }
 
 func (s *Selector[T]) GroupBy(expr ...Expression) *Selector[T] {
@@ -201,16 +173,85 @@ func (s *Selector[T]) Offset(offset int64) *Selector[T] {
 	s.offset = offset
 	return s
 }
-func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
-	query, err := s.Build(ctx)
+func (s *Selector[T]) Get(ctx *middleware.Context) (*T, error) {
+	root := s.handlerOne
+	for i := len(s.core.mdls) - 1; i >= 0; i-- {
+		root = s.core.mdls[i](root)
+	}
+	res := root(ctx)
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return res.Res.(*T), nil
+}
+
+var _ middleware.Handler = (&Selector[any]{}).handlerOne
+
+func (s *Selector[T]) handlerOne(ctx *middleware.Context) *middleware.Result {
+	ctx.Type = middleware.OpQuery
+	err := s.Build(ctx)
 	if err != nil {
-		return nil, err
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
+		}
 	}
 
-	rows, err := s.sess.queryContext(ctx, query.SQL, query.Args...)
+	rows, err := s.sess.queryContext(ctx.Ctx, ctx.Statement, ctx.Args...)
 	defer rows.Close()
 	if err != nil {
-		return nil, err
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
+		}
+	}
+	if !rows.Next() {
+		return &middleware.Result{
+			Res: nil,
+			Err: ErrNoRecord,
+		}
+	}
+
+	t := new(T)
+	uac, err := NewUnsafeAccessor(s.builder.m, t)
+	if err != nil {
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
+		}
+	}
+	err = uac.Set(rows)
+	if err != nil {
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
+		}
+	}
+	return &middleware.Result{
+		Res: t,
+		Err: nil,
+	}
+}
+
+var _ middleware.Handler = (&Selector[any]{}).handlerMulti
+
+func (s *Selector[T]) handlerMulti(ctx *middleware.Context) *middleware.Result {
+	ctx.Type = middleware.OpQuery
+	err := s.Build(ctx)
+	if err != nil {
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
+		}
+	}
+
+	rows, err := s.sess.queryContext(ctx.Ctx, ctx.Statement, ctx.Args...)
+	defer rows.Close()
+	if err != nil {
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
+		}
 	}
 
 	res := make([]*T, 0, 32)
@@ -218,15 +259,35 @@ func (s *Selector[T]) GetMulti(ctx context.Context) ([]*T, error) {
 		t := new(T)
 		uac, err := NewUnsafeAccessor(s.builder.m, t)
 		if err != nil {
-			return nil, err
+			return &middleware.Result{
+				Res: nil,
+				Err: err,
+			}
 		}
 		err = uac.Set(rows)
 		if err != nil {
-			return nil, err
+			return &middleware.Result{
+				Res: nil,
+				Err: err,
+			}
 		}
 		res = append(res, t)
 	}
-	return res, nil
+	return &middleware.Result{
+		Res: res,
+		Err: nil,
+	}
+}
+func (s *Selector[T]) GetMulti(ctx *middleware.Context) ([]*T, error) {
+	root := s.handlerMulti
+	for i := len(s.core.mdls) - 1; i >= 0; i-- {
+		root = s.core.mdls[i](root)
+	}
+	res := root(ctx)
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return res.Res.([]*T), nil
 }
 
 func (s *Selector[T]) buildSelectables() error {

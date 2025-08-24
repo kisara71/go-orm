@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -141,12 +142,16 @@ func TestInsertor_Mysql_Build(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := tc.builder.Build(context.Background())
+			ctx := &middleware.Context{Ctx: context.Background()}
+			err := tc.builder.Build(ctx)
 			assert.Equal(t, tc.wantErr, err)
 			if err != nil {
 				return
 			}
-			assert.Equal(t, tc.wantQuery, res)
+			assert.Equal(t, tc.wantQuery, &Query{
+				SQL:  ctx.Statement,
+				Args: ctx.Args,
+			})
 		})
 	}
 }
@@ -241,7 +246,8 @@ func TestInsertor_Exec_MySQL(t *testing.T) {
 				tc.mockExpect()
 			}
 
-			res := insertor.Exec(context.Background())
+			ctx := &middleware.Context{Ctx: context.Background()}
+			res := insertor.Exec(ctx)
 			if tc.wantErr != nil {
 				assert.Equal(t, tc.wantErr, res.Err())
 				return

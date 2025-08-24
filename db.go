@@ -3,6 +3,7 @@ package go_orm
 import (
 	"context"
 	"database/sql"
+	"github.com/kisara71/go-orm/middleware"
 )
 
 type DB struct {
@@ -56,6 +57,9 @@ func (d *DB) DoTx(ctx context.Context, fn func(ctx context.Context, tx *Transact
 	panicked = false
 
 	return err
+}
+func (d *DB) Use(middlewares ...middleware.Middleware) {
+	d.mdls = append(d.mdls, middlewares...)
 }
 
 type DBOptions func(db *DB)

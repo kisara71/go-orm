@@ -2,10 +2,11 @@ package go_orm
 
 import (
 	"context"
+	"github.com/kisara71/go-orm/middleware"
 )
 
 type Builder interface {
-	Build(ctx context.Context) (*Query, error)
+	Build(ctx *middleware.Context) error
 }
 
 type Querier[T any] interface {
@@ -14,7 +15,7 @@ type Querier[T any] interface {
 }
 
 type Executor interface {
-	Exec(ctx context.Context) *Result
+	Exec(ctx context.Context) *ExecResult
 }
 type Query struct {
 	SQL  string

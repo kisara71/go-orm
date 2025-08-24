@@ -1,8 +1,8 @@
 package go_orm
 
-import (
-	"context"
-)
+import "github.com/kisara71/go-orm/middleware"
+
+var _ Builder = &Insertor[any]{}
 
 type Insertor[T any] struct {
 	columns    []string
@@ -52,13 +52,13 @@ func (i *Insertor[T]) OnConflict() *OnConflictBuilder[T] {
 	}
 }
 
-func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
+func (i *Insertor[T]) Build(ctx *middleware.Context) error {
 	if len(i.values) == 0 {
-		return nil, ErrInsertNoValues
+		return ErrInsertNoValues
 	}
 	m, err := i.core.registry.Get(new(T))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	i.builder = NewBuilder(m, i.core.dialect)
 	i.builder.sb.WriteString("INSERT INTO ")
@@ -80,7 +80,7 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 		i.builder.buildByte('(')
 		for idx, col := range i.columns {
 			if fd, ok := i.builder.m.goMap[col]; !ok {
-				return nil, ErrUnknownField
+				return ErrUnknownField
 			} else {
 				fields = append(fields, fd)
 			}
@@ -100,7 +100,7 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 		//rval := reflect.ValueOf(val).Elem()
 		accessor, err := NewUnsafeAccessor(i.builder.m, val)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		i.builder.buildByte('(')
 		for idx2, fd := range fields {
@@ -110,7 +110,7 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 			i.builder.buildByte('?')
 			arg, err := accessor.Fetch(fd.goName)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			i.builder.addArgs(arg)
 		}
@@ -119,14 +119,13 @@ func (i *Insertor[T]) Build(ctx context.Context) (*Query, error) {
 
 	if i.onConflict != nil {
 		if err = i.core.dialect.BuildUpsert(i.builder, i.onConflict); err != nil {
-			return nil, err
+			return err
 		}
 	}
 	i.builder.buildByte(';')
-	return &Query{
-		SQL:  i.builder.getSQL(),
-		Args: i.builder.getArgs(),
-	}, nil
+	ctx.SetStatement(i.builder.getSQL())
+	ctx.SetArgs(i.builder.getArgs())
+	return nil
 }
 
 func (i *Insertor[T]) Values(vals ...*T) *Insertor[T] {
@@ -138,21 +137,44 @@ func (i *Insertor[T]) Columns(cols ...string) *Insertor[T] {
 	i.columns = cols
 	return i
 }
-func (i *Insertor[T]) Exec(ctx context.Context) *Result {
-	query, err := i.Build(ctx)
+
+var _ middleware.Handler = (&Insertor[any]{}).handleExec
+
+func (i *Insertor[T]) handleExec(ctx *middleware.Context) *middleware.Result {
+	err := i.Build(ctx)
 	if err != nil {
-		return &Result{
-			err: err,
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
 		}
 	}
-	res, err := i.sess.execContext(ctx, query.SQL, query.Args...)
+	res, err := i.sess.execContext(ctx.Ctx, ctx.Statement, ctx.Args...)
 	if err != nil {
-		return &Result{
-			err: err,
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
 		}
 	}
-	return &Result{
-		err: nil,
-		res: res,
+	return &middleware.Result{
+		Res: &ExecResult{
+			res: res,
+			err: nil,
+		},
+		Err: nil,
 	}
+}
+func (i *Insertor[T]) Exec(ctx *middleware.Context) *ExecResult {
+	ctx.Type = middleware.OpExec
+	root := i.handleExec
+	for idx := len(i.core.mdls) - 1; idx >= 0; idx++ {
+		root = i.core.mdls[idx](root)
+	}
+	res := root(ctx)
+	if res.Err != nil {
+		return &ExecResult{
+			res: nil,
+			err: res.Err,
+		}
+	}
+	return res.Res.(*ExecResult)
 }

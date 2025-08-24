@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/middleware"
+	"github.com/kisara71/go-orm/middleware/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
-	"time"
 )
 
 func TestSelector(t *testing.T) {
@@ -18,6 +19,7 @@ func TestSelector(t *testing.T) {
 	mockDB, _, err := sqlmock.New()
 	require.NoError(t, err)
 	db := OpenDB(mockDB, WithDialect(&mysqlDialect{}))
+	db.Use(log.NewDefault().Build())
 	testCases := []struct {
 		name      string
 		builder   *Selector[TestModel]
@@ -281,12 +283,16 @@ func TestSelector(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := tc.builder.Build(context.Background())
+			ctx := &middleware.Context{Ctx: context.Background()}
+			err := tc.builder.Build(ctx)
 			assert.Equal(t, err, tc.wantErr)
 			if err != nil {
 				return
 			}
-			assert.Equal(t, tc.wantQuery, res)
+			assert.Equal(t, tc.wantQuery, &Query{
+				SQL:  ctx.Statement,
+				Args: ctx.Args,
+			})
 		})
 	}
 }
@@ -295,7 +301,7 @@ func TestSelector_Get(t *testing.T) {
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	db := OpenDB(mockDB, WithDialect(MySQLDialect))
-
+	db.Use(log.NewDefault().Build())
 	type TestModel struct {
 		ID      int64  `orm:" column=id_t"`
 		Name    string `orm:"column=name_t"`
@@ -378,8 +384,7 @@ func TestSelector_Get(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.expect(mock)
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
+			ctx := &middleware.Context{Ctx: context.Background()}
 			res, err := tc.selector.Get(ctx)
 			assert.Equal(t, err, tc.wantErr)
 			if err != nil {
@@ -393,7 +398,7 @@ func TestSelector_GetMulti(t *testing.T) {
 	mockDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	db := OpenDB(mockDB, WithDialect(MySQLDialect))
-
+	db.Use(log.NewDefault().Build())
 	type TestModel struct {
 		ID      int64  `orm:"column=id_t"`
 		Name    string `orm:"column=name_t"`
@@ -448,8 +453,7 @@ func TestSelector_GetMulti(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.expect(mock)
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
-			defer cancel()
+			ctx := &middleware.Context{Ctx: context.Background()}
 			res, err := tc.selector.GetMulti(ctx)
 			assert.Equal(t, tc.wantErr, err)
 			if err != nil {

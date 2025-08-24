@@ -1,9 +1,11 @@
 package go_orm
 
 import (
-	"context"
+	"github.com/kisara71/go-orm/middleware"
 	"reflect"
 )
+
+var _ Builder = &Updater[any]{}
 
 type Updater[T any] struct {
 	builder *builder
@@ -38,11 +40,11 @@ func (u *Updater[T]) Where(p ...Predicate) *Updater[T] {
 	u.where = append(u.where, p...)
 	return u
 }
-func (u *Updater[T]) Build(ctx context.Context) (*Query, error) {
+func (u *Updater[T]) Build(ctx *middleware.Context) error {
 
 	m, err := u.core.registry.Get(new(T))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	u.builder = NewBuilder(m, u.core.dialect)
@@ -69,7 +71,7 @@ func (u *Updater[T]) Build(ctx context.Context) (*Query, error) {
 		}
 	} else {
 		if len(u.assigns) == 0 {
-			return nil, ErrUpdateNoColumns
+			return ErrUpdateNoColumns
 		}
 		for idx, assign := range u.assigns {
 			if idx > 0 {
@@ -78,12 +80,12 @@ func (u *Updater[T]) Build(ctx context.Context) (*Query, error) {
 			switch a := assign.(type) {
 			case Assignment:
 				if err := u.builder.buildColumn(a.column); err != nil {
-					return nil, err
+					return err
 				}
 				u.builder.buildString(" = ?")
 				u.builder.addArgs(a.val)
 			default:
-				return nil, ErrUnsupportedType
+				return ErrUnsupportedType
 			}
 		}
 	}
@@ -96,26 +98,48 @@ func (u *Updater[T]) Build(ctx context.Context) (*Query, error) {
 		err = u.builder.buildExpression(p, ClauseWhere)
 	}
 	u.builder.buildByte(';')
-	return &Query{
-		SQL:  u.builder.getSQL(),
-		Args: u.builder.getArgs(),
-	}, nil
+	ctx.SetStatement(u.builder.getSQL())
+	ctx.SetArgs(u.builder.getArgs())
+	return nil
 }
-func (u *Updater[T]) Exec(ctx context.Context) *Result {
-	query, err := u.Build(ctx)
+
+var _ middleware.Handler = (&Updater[any]{}).handleExec
+
+func (u *Updater[T]) handleExec(ctx *middleware.Context) *middleware.Result {
+	err := u.Build(ctx)
 	if err != nil {
-		return &Result{
-			err: err,
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
 		}
 	}
-	res, err := u.sess.execContext(ctx, query.SQL, query.Args...)
+	res, err := u.sess.execContext(ctx.Ctx, ctx.Statement, ctx.Args...)
 	if err != nil {
-		return &Result{
-			err: err,
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
 		}
 	}
-	return &Result{
-		res: res,
-		err: nil,
+	return &middleware.Result{
+		Res: &ExecResult{
+			res: res,
+			err: nil,
+		},
+		Err: nil,
 	}
+}
+func (u *Updater[T]) Exec(ctx *middleware.Context) *ExecResult {
+	ctx.Type = middleware.OpExec
+	root := u.handleExec
+	for i := len(u.core.mdls) - 1; i >= 0; i-- {
+		root = u.core.mdls[i](root)
+	}
+	res := root(ctx)
+	if res.Err != nil {
+		return &ExecResult{
+			res: nil,
+			err: res.Err,
+		}
+	}
+	return res.Res.(*ExecResult)
 }

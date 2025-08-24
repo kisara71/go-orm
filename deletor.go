@@ -1,8 +1,11 @@
 package go_orm
 
 import (
-	"context"
+	"database/sql"
+	"github.com/kisara71/go-orm/middleware"
 )
+
+var _ Builder = &Deletor[any]{}
 
 type Deletor[T any] struct {
 	tableName string
@@ -21,10 +24,10 @@ func NewDeletor[T any](sess session) *Deletor[T] {
 	}
 }
 
-func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
+func (d *Deletor[T]) Build(ctx *middleware.Context) error {
 	m, err := d.core.registry.Get(new(T))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	d.builder = NewBuilder(m, d.core.dialect)
 	d.builder.buildString("DELETE FROM ")
@@ -41,13 +44,12 @@ func (d *Deletor[T]) Build(ctx context.Context) (*Query, error) {
 		}
 		err = d.builder.buildExpression(p, ClauseWhere)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return &Query{
-		SQL:  d.builder.getSQL(),
-		Args: d.builder.getArgs(),
-	}, nil
+	ctx.SetArgs(d.builder.getArgs())
+	ctx.SetStatement(d.builder.getSQL())
+	return nil
 }
 func (d *Deletor[T]) From(tableName string) {
 	d.tableName = tableName
@@ -56,21 +58,46 @@ func (d *Deletor[T]) Where(predicate ...Predicate) {
 	d.where = predicate
 }
 
-func (d *Deletor[T]) Exec(ctx context.Context) *Result {
-	query, err := d.Build(ctx)
+var _ middleware.Handler = (&Deletor[any]{}).handleExec
+
+func (d *Deletor[T]) handleExec(ctx *middleware.Context) *middleware.Result {
+	err := d.Build(ctx)
 	if err != nil {
-		return &Result{
-			err: err,
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
 		}
 	}
-	res, err := d.sess.execContext(ctx, query.SQL, query.Args...)
+	res, err := d.sess.execContext(ctx.Ctx, ctx.Statement, ctx.Args...)
 	if err != nil {
-		return &Result{
-			err: err,
+		return &middleware.Result{
+			Res: nil,
+			Err: err,
 		}
 	}
-	return &Result{
+	return &middleware.Result{
+		Res: &ExecResult{
+			res: res,
+			err: nil,
+		},
+		Err: nil,
+	}
+}
+func (d *Deletor[T]) Exec(ctx *middleware.Context) *ExecResult {
+	ctx.Type = middleware.OpExec
+	root := d.handleExec
+	for i := len(d.core.mdls) - 1; i >= 0; i-- {
+		root = d.core.mdls[i](root)
+	}
+	res := root(ctx)
+	if res.Err != nil {
+		return &ExecResult{
+			res: nil,
+			err: res.Err,
+		}
+	}
+	return &ExecResult{
+		res: res.Res.(sql.Result),
 		err: nil,
-		res: res,
 	}
 }
