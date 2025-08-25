@@ -35,15 +35,7 @@ func TestSelector(t *testing.T) {
 				Args: []any{},
 			},
 		},
-		{
-			name:    "select from",
-			builder: NewSelector[TestModel](db).From("`test_model`"),
-			wantQuery: &Query{
-				SQL:  "SELECT * FROM `test_model`;",
-				Args: []any{},
-			},
-			wantErr: nil,
-		},
+
 		{
 			name:    "where",
 			builder: NewSelector[TestModel](db).Where(C("Name").Eq("hha")),
@@ -93,14 +85,6 @@ func TestSelector(t *testing.T) {
 			builder: NewSelector[TestModel](db).Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
 			wantQuery: &Query{
 				SQL:  "SELECT * FROM `test_model` WHERE (`age` = ?) AND (NOT (`name` = ?));",
-				Args: []any{111, "hha"},
-			},
-			wantErr: nil,
-		}, {
-			name:    "fromWhere",
-			builder: NewSelector[TestModel](db).From("`table_test`").Where((C("Age").Eq(111)).And(Not(C("Name").Eq("hha")))),
-			wantQuery: &Query{
-				SQL:  "SELECT * FROM `table_test` WHERE (`age` = ?) AND (NOT (`name` = ?));",
 				Args: []any{111, "hha"},
 			},
 			wantErr: nil,
@@ -461,6 +445,100 @@ func TestSelector_GetMulti(t *testing.T) {
 				return
 			}
 			assert.Equal(t, tc.wantRes, res)
+		})
+	}
+}
+
+func TestSelector_BuildJoin(t *testing.T) {
+	mockdb, _, err := sqlmock.New()
+	require.NoError(t, err)
+	db := OpenDB(mockdb, WithDialect(MySQLDialect))
+	type TestModel struct {
+		Id   int
+		Name string
+		Age  int
+	}
+	type Teacher struct {
+	}
+	type Course struct {
+		Id        int
+		StudentId int
+		Title     string
+	}
+
+	testCases := []struct {
+		name      string
+		builder   *Selector[TestModel]
+		wantQuery *Query
+	}{
+		{
+			name: "inner join",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(C("Id"), C("Name")).
+					From(TableOf(TestModel{}).Join(TableOf(Course{})))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT `id`, `name` FROM `test_model` JOIN `course`;",
+				Args: []any{},
+			},
+		},
+		{
+			name: "left join",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(C("Id"), C("Name")).
+					From(TableOf(TestModel{}).LeftJoin(TableOf(Course{})))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT `id`, `name` FROM `test_model` LEFT JOIN `course`;",
+				Args: []any{},
+			},
+		},
+		{
+			name: "nested join",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				nestedJoin := TableOf(&TestModel{}).Join(
+					TableOf(Course{}).LeftJoin(TableOf(Teacher{})),
+				)
+				s.Select(C("Id"), C("Name")).From(nestedJoin)
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT `id`, `name` FROM `test_model` JOIN (`course` LEFT JOIN `teacher`);",
+				Args: []any{},
+			},
+		},
+		{
+			name: "right join",
+			builder: func() *Selector[TestModel] {
+				s := NewSelector[TestModel](db)
+				s.Select(C("Id"), C("Name")).
+					From(TableOf(TestModel{}).RightJoin(TableOf(Course{})))
+				return s
+			}(),
+			wantQuery: &Query{
+				SQL:  "SELECT `id`, `name` FROM `test_model` RIGHT JOIN `course`;",
+				Args: []any{},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := &middleware.Context{Ctx: context.Background()}
+			err := tc.builder.Build(ctx)
+			assert.NoError(t, err)
+			if err != nil {
+				return
+			}
+			assert.Equal(t, tc.wantQuery, &Query{
+				SQL:  ctx.Statement,
+				Args: ctx.Args,
+			})
 		})
 	}
 }

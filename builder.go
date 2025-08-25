@@ -100,7 +100,7 @@ func (b *builder) buildExpression(exp Expression, clause Clause) error {
 		b.sb.WriteString(t.expression)
 		b.addArgs(t.args...)
 	case Aggregate:
-		if clause == ClauseWhere {
+		if clause == ClauseWhere || clause == ClauseOn {
 			return errs.ErrUnsupportedType
 		}
 		if err := b.buildAggregate(t); err != nil {

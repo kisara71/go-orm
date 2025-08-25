@@ -8,7 +8,7 @@ import (
 var _ Builder = &Selector[any]{}
 
 type Selector[T any] struct {
-	tableName   string
+	table       TableReference
 	where       []Predicate
 	selectables []Selectable
 	core        core
@@ -65,10 +65,9 @@ func (s *Selector[T]) Build(ctx *middleware.Context) error {
 		return err
 	}
 
-	if s.tableName == "" {
-		s.builder.quote(s.builder.m.TableName)
-	} else {
-		s.builder.buildString(s.tableName)
+	err = s.buildTableReference(s.table)
+	if err != nil {
+		return err
 	}
 	if len(s.where) > 0 {
 		s.builder.buildString(" WHERE ")
@@ -143,8 +142,8 @@ func (s *Selector[T]) Select(selectables ...Selectable) *Selector[T] {
 	return s
 }
 
-func (s *Selector[T]) From(table string) *Selector[T] {
-	s.tableName = table
+func (s *Selector[T]) From(table TableReference) *Selector[T] {
+	s.table = table
 	return s
 }
 
@@ -314,6 +313,74 @@ func (s *Selector[T]) buildSelectables() error {
 		s.builder.buildString(" FROM ")
 	} else {
 		s.builder.buildString("SELECT * FROM ")
+	}
+	return nil
+}
+
+func (s *Selector[T]) buildTableReference(table TableReference) error {
+	switch t := table.(type) {
+	case Table:
+		m, err := s.core.registry.Get(t.entity)
+		if err != nil {
+			return err
+		}
+		s.builder.quote(m.TableName)
+	case Join:
+		_, ok := t.left.(join)
+		if ok {
+			s.builder.buildByte('(')
+		}
+		err := s.buildTableReference(t.left)
+		if err != nil {
+			return err
+		}
+		s.builder.buildByte(' ')
+		s.builder.buildString(t.typ)
+		s.builder.buildByte(' ')
+		if ok {
+			s.builder.buildByte(')')
+		}
+		_, ok = t.right.(join)
+		if ok {
+			s.builder.buildByte('(')
+		}
+		err = s.buildTableReference(t.right)
+		if err != nil {
+			return err
+		}
+		if len(t.on) > 0 {
+			s.builder.buildString(" ON ")
+			p := t.on[0]
+			for i := 1; i < len(t.on); i++ {
+				p = p.And(t.on[i])
+			}
+			err = s.builder.buildExpression(p, ClauseOn)
+			if err != nil {
+				return err
+			}
+		} else if len(t.using) > 0 {
+			s.builder.buildByte('(')
+			for i, col := range t.using {
+				if i > 0 {
+					s.builder.buildString(", ")
+				}
+				err = s.builder.buildColumn(C(col))
+				if err != nil {
+					return err
+				}
+			}
+			s.builder.buildByte(')')
+		}
+		if ok {
+			s.builder.buildByte(')')
+		}
+	case JoinBuilder:
+		err := s.buildTableReference(t.toJoin())
+		if err != nil {
+			return err
+		}
+	default:
+		return errs.ErrUnsupportedType
 	}
 	return nil
 }

@@ -16,6 +16,7 @@ type Clause int
 const (
 	ClauseWhere Clause = iota
 	ClauseHaving
+	ClauseOn
 )
 
 func (o op) String() string {
