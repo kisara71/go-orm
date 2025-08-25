@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,7 +69,7 @@ func TestInsertor_Build_SQLite(t *testing.T) {
 		},
 		{
 			name:    "no values",
-			wantErr: ErrInsertNoValues,
+			wantErr: errs.ErrInsertNoValues,
 			builder: NewInsertor[TestModel](db).Values(),
 		},
 		{

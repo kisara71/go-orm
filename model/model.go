@@ -1,17 +1,18 @@
-package go_orm
+package model
 
 import (
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/utils"
 	"reflect"
 	"strings"
 	"sync"
 )
 
-type model struct {
-	tableName string
-	fields    []*fieldInfo
-	goMap     map[string]*fieldInfo
-	colMap    map[string]*fieldInfo
+type Model struct {
+	TableName string
+	Fields    []*FieldInfo
+	GoMap     map[string]*FieldInfo
+	ColMap    map[string]*FieldInfo
 }
 type TableName interface {
 	TableName() string
@@ -19,13 +20,13 @@ type TableName interface {
 
 var tableNameType = reflect.TypeOf((*TableName)(nil)).Elem()
 
-type fieldInfo struct {
-	colName string
-	goName  string
-	typ     reflect.Type
-	offset  uintptr
+type FieldInfo struct {
+	ColName string
+	GoName  string
+	Type    reflect.Type
+	Offset  uintptr
 }
-type registry struct {
+type Registry struct {
 	models sync.Map
 }
 
@@ -33,13 +34,13 @@ const (
 	columnTag = "column"
 )
 
-func (r *registry) Get(entity any) (*model, error) {
+func (r *Registry) Get(entity any) (*Model, error) {
 	typ := reflect.TypeOf(entity)
 	for typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Struct {
-		return nil, ErrInvalidModel
+		return nil, errs.ErrInvalidModel
 	}
 	m, ok := r.models.Load(typ)
 	if !ok {
@@ -48,15 +49,15 @@ func (r *registry) Get(entity any) (*model, error) {
 		if err != nil {
 			return nil, err
 		}
-		r.models.Store(typ, m.(*model))
+		r.models.Store(typ, m.(*Model))
 	}
-	return m.(*model), nil
+	return m.(*Model), nil
 }
-func (r *registry) parseModel(typ reflect.Type) (*model, error) {
+func (r *Registry) parseModel(typ reflect.Type) (*Model, error) {
 	numField := typ.NumField()
-	fields := make([]*fieldInfo, 0, numField)
-	goMap := make(map[string]*fieldInfo, numField)
-	colMap := make(map[string]*fieldInfo, numField)
+	fields := make([]*FieldInfo, 0, numField)
+	goMap := make(map[string]*FieldInfo, numField)
+	colMap := make(map[string]*FieldInfo, numField)
 	for i := 0; i < numField; i++ {
 		tags, err := r.parseTag(typ.Field(i).Tag)
 		if err != nil {
@@ -66,11 +67,11 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 		if !ok || colName == "" {
 			colName = utils.CamelToSnake(typ.Field(i).Name)
 		}
-		fi := &fieldInfo{
-			colName: colName,
-			goName:  typ.Field(i).Name,
-			typ:     typ.Field(i).Type,
-			offset:  typ.Field(i).Offset,
+		fi := &FieldInfo{
+			ColName: colName,
+			GoName:  typ.Field(i).Name,
+			Type:    typ.Field(i).Type,
+			Offset:  typ.Field(i).Offset,
 		}
 		goMap[typ.Field(i).Name] = fi
 		colMap[colName] = fi
@@ -82,15 +83,15 @@ func (r *registry) parseModel(typ reflect.Type) (*model, error) {
 	} else {
 		tableName = utils.CamelToSnake(typ.Name())
 	}
-	return &model{
-		tableName: tableName,
-		goMap:     goMap,
-		colMap:    colMap,
-		fields:    fields,
+	return &Model{
+		TableName: tableName,
+		GoMap:     goMap,
+		ColMap:    colMap,
+		Fields:    fields,
 	}, nil
 }
 
-func (r *registry) parseTag(tag reflect.StructTag) (map[string]string, error) {
+func (r *Registry) parseTag(tag reflect.StructTag) (map[string]string, error) {
 	res := make(map[string]string, 4)
 	fullTag, ok := tag.Lookup("orm")
 	if !ok {
@@ -100,7 +101,7 @@ func (r *registry) parseTag(tag reflect.StructTag) (map[string]string, error) {
 	for _, pair := range pairs {
 		seg := strings.SplitN(pair, "=", 2)
 		if len(seg) != 2 {
-			return nil, ErrInvalidTags
+			return nil, errs.ErrInvalidTags
 		}
 		res[seg[0]] = seg[1]
 	}

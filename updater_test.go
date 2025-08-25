@@ -3,6 +3,7 @@ package go_orm
 import (
 	"context"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,7 +90,7 @@ func TestUpdater_Build(t *testing.T) {
 				return u
 			}(),
 			wantQuery: nil,
-			wantErr:   ErrUpdateNoColumns,
+			wantErr:   errs.ErrUpdateNoColumns,
 		},
 		{
 			name: "update with where single",

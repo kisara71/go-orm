@@ -1,11 +1,11 @@
-package go_orm
+package errs
 
 import (
 	"errors"
 )
 
 var (
-	ErrInvalidModel     = errors.New("invalid type of model, expected struct or pointer")
+	ErrInvalidModel     = errors.New("invalid type of Model, expected struct or pointer")
 	ErrUnknownField     = errors.New("field not exists")
 	ErrInvalidTags      = errors.New("invalid tags, check structure's tags")
 	ErrUnknownColumn    = errors.New("get unknown columns")

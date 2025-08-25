@@ -3,6 +3,7 @@ package go_orm
 import (
 	"context"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -88,7 +89,7 @@ func TestDeletor_Build(t *testing.T) {
 				return d
 			}(),
 			wantQuery: nil,
-			wantErr:   ErrUnknownField,
+			wantErr:   errs.ErrUnknownField,
 		},
 	}
 

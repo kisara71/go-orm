@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/middleware"
 	"github.com/kisara71/go-orm/middleware/log"
 	"github.com/stretchr/testify/assert"
@@ -268,7 +269,7 @@ func TestSelector(t *testing.T) {
 			},
 		},
 		{
-			name: "limit offset",
+			name: "limit Offset",
 			builder: func() *Selector[TestModel] {
 				s := NewSelector[TestModel](db)
 				s.Select(Raw("DISTINCT `age`"), C("Name")).OrderBy(ASC("Age"), DESC("Age")).
@@ -342,7 +343,7 @@ func TestSelector_Get(t *testing.T) {
 				rows := sqlmock.NewRows([]string{"id_t", "name_t", "address"})
 				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
 			},
-			wantErr:  ErrNoRecord,
+			wantErr:  errs.ErrNoRecord,
 			wantRes:  nil,
 			selector: NewSelector[TestModel](db).Where(C("ID").Eq(2)),
 		},
@@ -353,7 +354,7 @@ func TestSelector_Get(t *testing.T) {
 				rows.AddRow(1, "wang", "something")
 				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
 			},
-			wantErr:  ErrUnknownColumn,
+			wantErr:  errs.ErrUnknownColumn,
 			wantRes:  nil,
 			selector: NewSelector[TestModel](db).Where(C("ID").Eq(1)),
 		},
@@ -364,7 +365,7 @@ func TestSelector_Get(t *testing.T) {
 				rows.AddRow("not_int", "wang", "lll")
 				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
 			},
-			wantErr:  ErrScanFailed,
+			wantErr:  errs.ErrScanFailed,
 			wantRes:  nil,
 			selector: NewSelector[TestModel](db).Where(C("ID").Eq(1)),
 		},
@@ -372,7 +373,7 @@ func TestSelector_Get(t *testing.T) {
 			name: "build error",
 			expect: func(mk sqlmock.Sqlmock) {
 			},
-			wantErr: ErrUnknownField,
+			wantErr: errs.ErrUnknownField,
 			wantRes: nil,
 			selector: func() *Selector[TestModel] {
 				s := NewSelector[TestModel](db).Where(C("sfdsf").Eq(1))
@@ -444,7 +445,7 @@ func TestSelector_GetMulti(t *testing.T) {
 					AddRow("not_int", "wang", "addr")
 				mk.ExpectQuery("SELECT \\* FROM `test_model` WHERE .*;").WillReturnRows(rows)
 			},
-			wantErr:  ErrScanFailed,
+			wantErr:  errs.ErrScanFailed,
 			wantRes:  nil,
 			selector: NewSelector[TestModel](db).Where(C("ID").Eq(1)),
 		},

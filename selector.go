@@ -1,6 +1,9 @@
 package go_orm
 
-import "github.com/kisara71/go-orm/middleware"
+import (
+	"github.com/kisara71/go-orm/errs"
+	"github.com/kisara71/go-orm/middleware"
+)
 
 var _ Builder = &Selector[any]{}
 
@@ -63,7 +66,7 @@ func (s *Selector[T]) Build(ctx *middleware.Context) error {
 	}
 
 	if s.tableName == "" {
-		s.builder.quote(s.builder.m.tableName)
+		s.builder.quote(s.builder.m.TableName)
 	} else {
 		s.builder.buildString(s.tableName)
 	}
@@ -93,7 +96,7 @@ func (s *Selector[T]) Build(ctx *middleware.Context) error {
 				s.builder.buildString(exp.expression)
 				s.builder.addArgs(exp.args...)
 			default:
-				return ErrUnsupportedType
+				return errs.ErrUnsupportedType
 			}
 		}
 	}
@@ -208,18 +211,19 @@ func (s *Selector[T]) handlerOne(ctx *middleware.Context) *middleware.Result {
 	if !rows.Next() {
 		return &middleware.Result{
 			Res: nil,
-			Err: ErrNoRecord,
+			Err: errs.ErrNoRecord,
 		}
 	}
 
 	t := new(T)
-	uac, err := NewUnsafeAccessor(s.builder.m, t)
+	uac := NewUnsafeAccessor(s.builder.m)
 	if err != nil {
 		return &middleware.Result{
 			Res: nil,
 			Err: err,
 		}
 	}
+	uac.Access(t)
 	err = uac.Set(rows)
 	if err != nil {
 		return &middleware.Result{
@@ -253,17 +257,11 @@ func (s *Selector[T]) handlerMulti(ctx *middleware.Context) *middleware.Result {
 			Err: err,
 		}
 	}
-
+	uac := NewUnsafeAccessor(s.builder.m)
 	res := make([]*T, 0, 32)
 	for rows.Next() {
 		t := new(T)
-		uac, err := NewUnsafeAccessor(s.builder.m, t)
-		if err != nil {
-			return &middleware.Result{
-				Res: nil,
-				Err: err,
-			}
-		}
+		uac.Access(t)
 		err = uac.Set(rows)
 		if err != nil {
 			return &middleware.Result{

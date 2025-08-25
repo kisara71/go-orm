@@ -1,16 +1,20 @@
 package go_orm
 
-import "strings"
+import (
+	"github.com/kisara71/go-orm/errs"
+	"github.com/kisara71/go-orm/model"
+	"strings"
+)
 
 type builder struct {
-	m       *model
+	m       *model.Model
 	sb      strings.Builder
 	args    []any
 	dialect Dialect
 	qte     byte
 }
 
-func NewBuilder(m *model, dialect Dialect) *builder {
+func NewBuilder(m *model.Model, dialect Dialect) *builder {
 	return &builder{
 		m:       m,
 		sb:      strings.Builder{},
@@ -43,10 +47,10 @@ func (b *builder) buildColumn(col Column) error {
 		b.sb.WriteByte('*')
 		return nil
 	}
-	if _, ok := b.m.goMap[col.name]; !ok {
-		return ErrUnknownField
+	if _, ok := b.m.GoMap[col.name]; !ok {
+		return errs.ErrUnknownField
 	}
-	b.quote(b.m.goMap[col.name].colName)
+	b.quote(b.m.GoMap[col.name].ColName)
 	if col.alias != "" {
 		b.sb.WriteString(" AS ")
 		b.quote(col.alias)
@@ -97,7 +101,7 @@ func (b *builder) buildExpression(exp Expression, clause Clause) error {
 		b.addArgs(t.args...)
 	case Aggregate:
 		if clause == ClauseWhere {
-			return ErrUnsupportedType
+			return errs.ErrUnsupportedType
 		}
 		if err := b.buildAggregate(t); err != nil {
 			return err

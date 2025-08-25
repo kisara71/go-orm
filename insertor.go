@@ -1,6 +1,10 @@
 package go_orm
 
-import "github.com/kisara71/go-orm/middleware"
+import (
+	"github.com/kisara71/go-orm/errs"
+	"github.com/kisara71/go-orm/middleware"
+	"github.com/kisara71/go-orm/model"
+)
 
 var _ Builder = &Insertor[any]{}
 
@@ -54,7 +58,7 @@ func (i *Insertor[T]) OnConflict() *OnConflictBuilder[T] {
 
 func (i *Insertor[T]) Build(ctx *middleware.Context) error {
 	if len(i.values) == 0 {
-		return ErrInsertNoValues
+		return errs.ErrInsertNoValues
 	}
 	m, err := i.core.registry.Get(new(T))
 	if err != nil {
@@ -63,52 +67,50 @@ func (i *Insertor[T]) Build(ctx *middleware.Context) error {
 	i.builder = NewBuilder(m, i.core.dialect)
 	i.builder.sb.WriteString("INSERT INTO ")
 
-	i.builder.quote(i.builder.m.tableName)
+	i.builder.quote(i.builder.m.TableName)
 	i.builder.buildByte(' ')
-	fields := i.builder.m.fields
+	fields := i.builder.m.Fields
 	if len(i.columns) == 0 {
 		i.builder.buildByte('(')
-		for idx, fd := range i.builder.m.fields {
+		for idx, fd := range i.builder.m.Fields {
 			if idx > 0 {
 				i.builder.sb.WriteString(", ")
 			}
-			i.builder.quote(fd.colName)
+			i.builder.quote(fd.ColName)
 		}
 		i.builder.buildByte(')')
 	} else {
-		fields = make([]*fieldInfo, 0, len(i.columns))
+		fields = make([]*model.FieldInfo, 0, len(i.columns))
 		i.builder.buildByte('(')
 		for idx, col := range i.columns {
-			if fd, ok := i.builder.m.goMap[col]; !ok {
-				return ErrUnknownField
+			if fd, ok := i.builder.m.GoMap[col]; !ok {
+				return errs.ErrUnknownField
 			} else {
 				fields = append(fields, fd)
 			}
 			if idx > 0 {
 				i.builder.buildString(", ")
 			}
-			i.builder.quote(fields[idx].colName)
+			i.builder.quote(fields[idx].ColName)
 		}
 		i.builder.buildByte(')')
 	}
 
 	i.builder.buildString(" VALUES ")
+	accessor := NewUnsafeAccessor(i.builder.m)
 	for idx1, val := range i.values {
 		if idx1 > 0 {
 			i.builder.buildString(", ")
 		}
 		//rval := reflect.ValueOf(val).Elem()
-		accessor, err := NewUnsafeAccessor(i.builder.m, val)
-		if err != nil {
-			return err
-		}
+		accessor.Access(val)
 		i.builder.buildByte('(')
 		for idx2, fd := range fields {
 			if idx2 > 0 {
 				i.builder.buildString(", ")
 			}
 			i.builder.buildByte('?')
-			arg, err := accessor.Fetch(fd.goName)
+			arg, err := accessor.Fetch(fd.GoName)
 			if err != nil {
 				return err
 			}
@@ -166,7 +168,7 @@ func (i *Insertor[T]) handleExec(ctx *middleware.Context) *middleware.Result {
 func (i *Insertor[T]) Exec(ctx *middleware.Context) *ExecResult {
 	ctx.Type = middleware.OpExec
 	root := i.handleExec
-	for idx := len(i.core.mdls) - 1; idx >= 0; idx++ {
+	for idx := len(i.core.mdls) - 1; idx >= 0; idx-- {
 		root = i.core.mdls[idx](root)
 	}
 	res := root(ctx)

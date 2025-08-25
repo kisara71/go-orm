@@ -1,6 +1,8 @@
 package go_orm
 
 import (
+	"github.com/kisara71/go-orm/errs"
+	"github.com/kisara71/go-orm/model"
 	"reflect"
 	"testing"
 
@@ -21,7 +23,7 @@ func TestRegistry_ParseModel(t *testing.T) {
 		Name string // 没有 tag，用 CamelToSnake
 		Age  int    `orm:"column=age_t"`
 	}
-	r := &registry{}
+	r := &model.Registry{}
 
 	testCases := []struct {
 		name    string
@@ -64,7 +66,7 @@ func TestRegistry_ParseModel(t *testing.T) {
 		{
 			name:    "invalid type",
 			entity:  123,
-			wantErr: ErrInvalidModel,
+			wantErr: errs.ErrInvalidModel,
 		},
 	}
 
@@ -75,10 +77,10 @@ func TestRegistry_ParseModel(t *testing.T) {
 			if err != nil {
 				return
 			}
-			assert.Equal(t, tc.wantTbl, m.tableName)
-			gotCols := make(map[string]string, len(m.goMap))
-			for k, f := range m.goMap {
-				gotCols[k] = f.colName
+			assert.Equal(t, tc.wantTbl, m.TableName)
+			gotCols := make(map[string]string, len(m.GoMap))
+			for k, f := range m.GoMap {
+				gotCols[k] = f.ColName
 			}
 			assert.True(t, reflect.DeepEqual(tc.wantCol, gotCols))
 		})

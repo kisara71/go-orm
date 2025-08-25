@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/middleware"
+	"github.com/kisara71/go-orm/middleware/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -95,7 +97,7 @@ func TestInsertor_Mysql_Build(t *testing.T) {
 		{
 			name:      "no values",
 			wantQuery: nil,
-			wantErr:   ErrInsertNoValues,
+			wantErr:   errs.ErrInsertNoValues,
 			builder:   NewInsertor[TestModel](db).Values(),
 		},
 		{
@@ -161,7 +163,7 @@ func TestInsertor_Exec_MySQL(t *testing.T) {
 	defer mockDB.Close()
 
 	db := OpenDB(mockDB, WithDialect(&mysqlDialect{}))
-
+	db.Use(log.NewDefault().Build())
 	type TestModel struct {
 		ID      int64
 		Name    string
@@ -228,7 +230,7 @@ func TestInsertor_Exec_MySQL(t *testing.T) {
 			mockExpect:   nil,
 			wantLastID:   0,
 			wantAffected: 0,
-			wantErr:      ErrInsertNoValues,
+			wantErr:      errs.ErrInsertNoValues,
 		},
 	}
 

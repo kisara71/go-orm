@@ -32,7 +32,7 @@ func (d *Deletor[T]) Build(ctx *middleware.Context) error {
 	d.builder = NewBuilder(m, d.core.dialect)
 	d.builder.buildString("DELETE FROM ")
 	if d.tableName == "" {
-		d.builder.quote(d.builder.m.tableName)
+		d.builder.quote(d.builder.m.TableName)
 	} else {
 		d.builder.buildString(d.tableName)
 	}

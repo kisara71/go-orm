@@ -1,5 +1,7 @@
 package go_orm
 
+import "github.com/kisara71/go-orm/errs"
+
 type Dialect interface {
 	Quoter() byte
 	BuildUpsert(builder *builder, opk *OnConflict) error
@@ -20,7 +22,7 @@ func (s *standardSQL) Quoter() byte {
 }
 
 func (s *standardSQL) BuildUpsert(builder *builder, opk *OnConflict) error {
-	return ErrUnsupported
+	return errs.ErrUnsupported
 }
 
 type mysqlDialect struct {
@@ -46,7 +48,7 @@ func (m *mysqlDialect) BuildUpsert(builder *builder, opk *OnConflict) error {
 		case Column:
 			err := builder.buildColumn(as)
 			if err != nil {
-				return ErrUnknownField
+				return errs.ErrUnknownField
 			}
 			builder.buildString(" = VALUES(")
 			_ = builder.buildColumn(as)
@@ -86,7 +88,7 @@ func (s *sqliteDialect) BuildUpsert(builder *builder, opk *OnConflict) error {
 		case Column:
 			err := builder.buildColumn(as)
 			if err != nil {
-				return ErrUnknownField
+				return errs.ErrUnknownField
 			}
 			builder.buildString(" = excluded.")
 			_ = builder.buildColumn(as)
@@ -125,7 +127,7 @@ func (p *postgreDialect) BuildUpsert(builder *builder, opk *OnConflict) error {
 		case Column:
 			err := builder.buildColumn(as)
 			if err != nil {
-				return ErrUnknownField
+				return errs.ErrUnknownField
 			}
 			builder.buildString(" = excluded.")
 			_ = builder.buildColumn(as)

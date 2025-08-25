@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/kisara71/go-orm/middleware"
+	"github.com/kisara71/go-orm/model"
 )
 
 type DB struct {
@@ -72,7 +73,7 @@ func Open(driver string, dsn string, options ...DBOptions) (*DB, error) {
 	db := &DB{
 		db: sqldb,
 		core: core{
-			registry: &registry{},
+			registry: &model.Registry{},
 			dialect:  StandardSQL,
 		},
 	}
@@ -85,7 +86,7 @@ func OpenDB(sqldb *sql.DB, options ...DBOptions) *DB {
 	db := &DB{
 		db: sqldb,
 		core: core{
-			registry: &registry{},
+			registry: &model.Registry{},
 			dialect:  StandardSQL,
 		},
 	}

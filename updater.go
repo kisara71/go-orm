@@ -1,6 +1,7 @@
 package go_orm
 
 import (
+	"github.com/kisara71/go-orm/errs"
 	"github.com/kisara71/go-orm/middleware"
 	"reflect"
 )
@@ -50,28 +51,28 @@ func (u *Updater[T]) Build(ctx *middleware.Context) error {
 	u.builder = NewBuilder(m, u.core.dialect)
 
 	u.builder.buildString("UPDATE ")
-	u.builder.quote(u.builder.m.tableName)
+	u.builder.quote(u.builder.m.TableName)
 	u.builder.buildString(" SET ")
 
 	if u.val != nil {
 		val := reflect.ValueOf(u.val).Elem()
 		idx := 0
-		for _, fd := range u.builder.m.fields {
-			fieldVal := val.FieldByName(fd.goName)
+		for _, fd := range u.builder.m.Fields {
+			fieldVal := val.FieldByName(fd.GoName)
 			if fieldVal.IsZero() {
 				continue
 			}
 			if idx > 0 {
 				u.builder.buildString(", ")
 			}
-			u.builder.quote(fd.colName)
+			u.builder.quote(fd.ColName)
 			u.builder.buildString(" = ?")
 			u.builder.addArgs(fieldVal.Interface())
 			idx++
 		}
 	} else {
 		if len(u.assigns) == 0 {
-			return ErrUpdateNoColumns
+			return errs.ErrUpdateNoColumns
 		}
 		for idx, assign := range u.assigns {
 			if idx > 0 {
@@ -85,7 +86,7 @@ func (u *Updater[T]) Build(ctx *middleware.Context) error {
 				u.builder.buildString(" = ?")
 				u.builder.addArgs(a.val)
 			default:
-				return ErrUnsupportedType
+				return errs.ErrUnsupportedType
 			}
 		}
 	}
